@@ -62,7 +62,7 @@
                 <outputFile>NotepadM.exe</outputFile>
                 <jar>${project.build.directory}/NotepadM-1.0-SNAPSHOT.jar</jar>
                 <mainClass>com.example.Main</mainClass>
-                <icon>${project.basedir}/src/main/resources/notepad.ico</icon> <!-- (необязательно) иконка для .exe -->
+                <icon>${project.basedir}/src/main/resources/images/NotepadM.ICO</icon> <!-- (необязательно) иконка для .exe -->
                 <dontWrapJar>false</dontWrapJar>
                 <stayAlive>true</stayAlive> <!-- опционально, чтобы программа не закрывалась после завершения -->
               </configuration>
