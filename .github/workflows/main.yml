@@ -28,9 +28,21 @@ jobs:
       - name: Build with Maven
         run: mvn clean install
 
+      # Упаковка проекта в EXE файл с jpackage
+      - name: Package the project with jpackage
+        run: |
+          jpackage --input target --name NotepadM --main-jar target/NotepadM-1.0-SNAPSHOT.jar --main-class com.example.Main --type exe --java-options "-Xmx512m" --jvm-target 17
+           
       # Загрузка собранного JAR релиза 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v3
         with:
           name: NotepadM-artifact
           path: target/NotepadM-1.0-SNAPSHOT.jar
+
+      # Загрузка собранного (EXE файла)
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: NotepadM-exe
+          path: target/NotepadM.exe
