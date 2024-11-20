@@ -44,6 +44,30 @@
                 </configuration>
             </plugin>
 
+            <!-- Плагин Launch4j для создания .exe файла -->
+            <plugin>
+              <groupId>org.tanukisoftware.wrapper</groupId>
+              <artifactId>launch4j-maven-plugin</artifactId>
+              <version>2.6.1</version>
+              <executions>
+                <execution>
+                  <goals>
+                    <goal>launch4j</goal>
+                  </goals>
+                </execution>
+              </executions>
+              <configuration>
+                <!-- Путь к вашему JAR файлу -->
+                <outputDirectory>${project.build.directory}</outputDirectory>
+                <outputFile>NotepadM.exe</outputFile>
+                <jar>${project.build.directory}/NotepadM-1.0-SNAPSHOT.jar</jar>
+                <mainClass>com.example.Main</mainClass>
+                <icon>${project.basedir}/src/main/resources/notepad.ico</icon> <!-- (необязательно) иконка для .exe -->
+                <dontWrapJar>false</dontWrapJar>
+                <stayAlive>true</stayAlive> <!-- опционально, чтобы программа не закрывалась после завершения -->
+              </configuration>
+             </plugin>
+
         </plugins>
     </build>
 
