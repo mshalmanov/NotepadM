@@ -31,7 +31,7 @@ jobs:
       # Упаковка проекта в EXE файл с jpackage
       - name: Package the project with jpackage
         run: |
-          jpackage --input target --name NotepadM --main-jar target/NotepadM-1.0-SNAPSHOT.jar --main-class com.example.Main --type msi --java-options "-Xmx512m"
+          jpackage --input target --name NotepadM --main-jar target/NotepadM-1.0-SNAPSHOT.jar --main-class com.example.Main --type app-image --java-options "-Xmx512m"
            
       # Загрузка собранного JAR релиза 
       - name: Upload JAR artifact
