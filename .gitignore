@@ -9,6 +9,7 @@
 
 # NetBeans
 nbproject/private/
+nbactions.xml
 
 # Eclipse
 .settings/
