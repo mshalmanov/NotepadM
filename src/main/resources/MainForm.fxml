@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+
+<AnchorPane xmlns:fx="http://javafx.com/fxml/1" fx:controller="ru.filive.MainFormController">
+    <MenuBar AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0">
+        <Menu text="File">
+            <MenuItem fx:id="newMenuItem" text="Open" onAction="#onNewAction">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/New.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>
+            <MenuItem fx:id="openMenuItem" text="Open" onAction="#onOpenAction">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Open.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>
+            <MenuItem fx:id="saveMenuItem" text="Save" onAction="#onSaveAction">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Save.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>
+            <SeparatorMenuItem />
+            <MenuItem fx:id="exitMenuItem" text="Exit" onAction="#onExitAction">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Exit.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>
+        </Menu>
+
+        <Menu text="Edit">
+            <MenuItem fx:id="cutMenuItem" text="Cut" onAction="#onCutAction">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Cut.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>    
+            <MenuItem fx:id="copyMenuItem" text="Copy" onAction="#onCopyAction">
+                  <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Copy.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>             
+            <MenuItem fx:id="pasteMenuItem" text="Paste" onAction="#onPasteAction">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Paste.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem> 
+        </Menu>
+
+        <Menu text="Help">
+            <MenuItem text="About" onAction="#onAboutAction" />
+        </Menu>
+    </MenuBar>
+
+    <ToolBar AnchorPane.topAnchor="25" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0">
+        <Button fx:id="newButton" onAction="#onNewAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/New.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="openButton" onAction="#onOpenAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Open.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="saveButton" onAction="#onSaveAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Save.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="cutButton" onAction="#onCutAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Cut.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="copyButton" onAction="#onCopyAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Copy.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="pastButton" onAction="#onPasteAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Paste.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="Text_boldButton" onAction="#onBoldAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Text_bold.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="Text_italicsButton" onAction="#onItalicAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Text_italics.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="Text_underlineButton" onAction="#onUnderlineAction">
+            <graphic>
+                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Text_underline.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+    </ToolBar>
+    
+    <TabPane fx:id="tabPane" AnchorPane.topAnchor="60" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0"/>
+
+</AnchorPane>
