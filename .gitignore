@@ -1,11 +1,39 @@
-# Project files
-.idea
+# =====================
+# IDE
+# =====================
 
+# IntelliJ IDEA
+.idea
+*.iml
+*.iws
+
+# NetBeans
+nbproject/private/
+
+# Eclipse
+.settings/
+.classpath
+.project
+
+# =====================
+# Maven / Build
+# =====================
+/target/
+/pom.xml.tag
+/pom.xml.releaseBackup
+/pom.xml.versionsBackup
+/release.properties
+
+# =====================
 # Resource
+# =====================
 /src/main/resources/images/new/
 
-# Compiling flies
-/target/*
-
-# ETC
+# =====================
+# Backup / Temp / Logs / ETC
+# =====================
 /backup/
+*.log
+*.tmp
+*.swp       # Vim swap files
+.DS_Store   # macOS
