@@ -8,7 +8,7 @@ package ru.filive;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
+import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
@@ -27,6 +27,11 @@ public class MainForm extends Application
         Scene scene = new Scene(root, 800, 600);
         
         primaryStage.setTitle("Notepad");
+        primaryStage.getIcons().add(
+            new Image(getClass().getResourceAsStream("/images/NotepadM.png"))
+        );
+        primaryStage.setMinWidth(800);
+        primaryStage.setMinHeight(600);
         //frmMain.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); //exit from close app
         primaryStage.setScene(scene);
         primaryStage.show();
