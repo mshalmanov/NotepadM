@@ -53,12 +53,17 @@ property <int> current-tab     ⇄    индекс активного докум
 property <string> document-text ⇄   текст активного документа
 callback new-file()            →    добавить пустой Document, показать
 callback open-file()           →    rfd + fs::read_to_string → в пустую или новую вкладку
-callback save-file()           →    fs::write (диалог rfd, если пути ещё нет)
+callback save-file()           →    save_document(..., always_ask: false)
+callback save-file-as()        →    save_document(..., always_ask: true)
 callback select-tab(int)       →    показать документ по индексу
 callback close-tab(int)        →    подтверждение при dirty; убрать из Vec
 callback text-edited(string)   →    обновить text, выставить dirty
-callback quit()                →    slint::quit_event_loop()
+callback show-about()          →    rfd::MessageDialog (версия из CARGO_PKG_VERSION)
+callback quit()                →    проверка dirty-документов → quit_event_loop()
 ```
+
+Закрытие окна крестиком перехватывается `on_close_requested` — та же проверка
+несохранённых документов, что и у «Выход».
 
 Заголовок окна и метки вкладок (`*` у изменённых) — реактивные выражения в разметке,
 пересчитываются при изменении модели автоматически.
@@ -76,3 +81,11 @@ callback quit()                →    slint::quit_event_loop()
 - `cargo build --release` — оптимизированный бинарник `target/release/notepadm(.exe)`.
 - В release-сборке на Windows консольное окно отключено
   (`windows_subsystem = "windows"` в `src/main.rs`).
+- Перед коммитом: `cargo fmt` и `cargo clippy` — CI проверяет оба
+  (`fmt --check`, `clippy -- -D warnings`) и валит сборку при нарушениях.
+
+## CI
+
+`.github/workflows/ci.yml`: на push/PR в ветку `rust` — матрица
+Windows / Linux / macOS: проверка форматирования, clippy, release-сборка,
+бинарники выкладываются артефактами `NotepadM-<ОС>`.

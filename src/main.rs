@@ -66,6 +66,66 @@ fn show_error(title: &str, err: &std::io::Error) {
         .show();
 }
 
+/// Сохранить документ по индексу. `always_ask` = режим «Сохранить как…»:
+/// диалог выбора файла показывается даже при известном пути.
+fn save_document(
+    docs: &Rc<RefCell<Vec<Document>>>,
+    tabs: &VecModel<TabInfo>,
+    index: usize,
+    always_ask: bool,
+) {
+    // Короткий заём: берём из документа только нужное и отпускаем,
+    // чтобы не держать RefCell занятым во время модального диалога.
+    let (known_path, suggested_name) = {
+        let docs = docs.borrow();
+        let doc = &docs[index];
+        let known = if always_ask { None } else { doc.path.clone() };
+        (known, doc.title())
+    };
+
+    let Some(path) = known_path.or_else(|| {
+        rfd::FileDialog::new()
+            .add_filter("Текстовые файлы", &["txt"])
+            .add_filter("Все файлы", &["*"])
+            .set_file_name(suggested_name)
+            .save_file()
+    }) else {
+        return; // пользователь отменил диалог
+    };
+
+    let mut docs = docs.borrow_mut();
+    match fs::write(&path, docs[index].text.as_bytes()) {
+        Ok(()) => {
+            docs[index].path = Some(path);
+            docs[index].dirty = false;
+            tabs.set_row_data(index, docs[index].tab_info());
+        }
+        Err(err) => show_error("Ошибка сохранения", &err),
+    }
+}
+
+/// Заголовки всех несохранённых документов.
+fn dirty_titles(docs: &[Document]) -> Vec<String> {
+    docs.iter()
+        .filter(|doc| doc.dirty)
+        .map(Document::title)
+        .collect()
+}
+
+/// Спросить пользователя, выходить ли, бросив несохранённые файлы.
+fn confirm_discard(titles: &[String]) -> bool {
+    rfd::MessageDialog::new()
+        .set_title("Несохранённые изменения")
+        .set_description(format!(
+            "Не сохранено: {}.\nВыйти без сохранения?",
+            titles.join(", ")
+        ))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .set_level(rfd::MessageLevel::Warning)
+        .show()
+        == rfd::MessageDialogResult::Yes
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     let ui = MainWindow::new()?;
 
@@ -140,9 +200,7 @@ fn main() -> Result<(), slint::PlatformError> {
             if is_dirty {
                 let answer = rfd::MessageDialog::new()
                     .set_title("Несохранённые изменения")
-                    .set_description(format!(
-                        "«{title}» не сохранён. Закрыть без сохранения?"
-                    ))
+                    .set_description(format!("«{title}» не сохранён. Закрыть без сохранения?"))
                     .set_buttons(rfd::MessageButtons::YesNo)
                     .set_level(rfd::MessageLevel::Warning)
                     .show();
@@ -192,7 +250,11 @@ fn main() -> Result<(), slint::PlatformError> {
 
             let mut docs = docs.borrow_mut();
             let current = ui.get_current_tab() as usize;
-            let opened = Document { path: Some(path), text, dirty: false };
+            let opened = Document {
+                path: Some(path),
+                text,
+                dirty: false,
+            };
 
             let pristine = docs[current].path.is_none()
                 && docs[current].text.is_empty()
@@ -209,39 +271,66 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // «Файл → Сохранить»: в известный путь, иначе диалог «Сохранить как».
+    // «Файл → Сохранить»: в известный путь, иначе диалог выбора файла.
     ui.on_save_file({
         let ui = ui.as_weak();
         let docs = docs.clone();
         let tabs = tabs_model.clone();
         move || {
-            let ui = ui.unwrap();
-            let index = ui.get_current_tab() as usize;
+            let index = ui.unwrap().get_current_tab() as usize;
+            save_document(&docs, &tabs, index, false);
+        }
+    });
 
-            let known_path = docs.borrow()[index].path.clone();
-            let Some(path) = known_path.or_else(|| {
-                rfd::FileDialog::new()
-                    .add_filter("Текстовые файлы", &["txt"])
-                    .save_file()
-            }) else {
-                return; // пользователь отменил диалог
-            };
+    // «Файл → Сохранить как…»: диалог показывается всегда.
+    ui.on_save_file_as({
+        let ui = ui.as_weak();
+        let docs = docs.clone();
+        let tabs = tabs_model.clone();
+        move || {
+            let index = ui.unwrap().get_current_tab() as usize;
+            save_document(&docs, &tabs, index, true);
+        }
+    });
 
-            let mut docs = docs.borrow_mut();
-            match fs::write(&path, docs[index].text.as_bytes()) {
-                Ok(()) => {
-                    docs[index].path = Some(path);
-                    docs[index].dirty = false;
-                    tabs.set_row_data(index, docs[index].tab_info());
-                }
-                Err(err) => show_error("Ошибка сохранения", &err),
+    // «Файл → Выход»: с проверкой несохранённых документов.
+    ui.on_quit({
+        let docs = docs.clone();
+        move || {
+            let unsaved = dirty_titles(&docs.borrow());
+            if unsaved.is_empty() || confirm_discard(&unsaved) {
+                let _ = slint::quit_event_loop();
             }
         }
     });
 
-    // «Файл → Выход».
-    ui.on_quit(|| {
-        let _ = slint::quit_event_loop();
+    // Крестик окна — та же проверка. Возвращаемое значение говорит Slint,
+    // закрывать окно или оставить открытым.
+    ui.window().on_close_requested({
+        let docs = docs.clone();
+        move || {
+            let unsaved = dirty_titles(&docs.borrow());
+            if unsaved.is_empty() || confirm_discard(&unsaved) {
+                slint::CloseRequestResponse::HideWindow
+            } else {
+                slint::CloseRequestResponse::KeepWindowShown
+            }
+        }
+    });
+
+    // «Справка → О программе». env! читает переменную на этапе компиляции:
+    // версия берётся из Cargo.toml и «вшивается» в бинарник.
+    ui.on_show_about(|| {
+        rfd::MessageDialog::new()
+            .set_title("О программе")
+            .set_description(concat!(
+                "NotepadM ",
+                env!("CARGO_PKG_VERSION"),
+                "\nТекстовый редактор на Rust + Slint.\n",
+                "\nЛицензия: GNU GPL v2 или новее.",
+                "\nАвтор: Marat Shalmanov."
+            ))
+            .show();
     });
 
     ui.run()

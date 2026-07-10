@@ -33,7 +33,9 @@ export component MainWindow inherits Window {
     callback new-file();
     callback open-file();
     callback save-file();
+    callback save-file-as();
     callback quit();
+    callback show-about();
     callback select-tab(int);
     callback close-tab(int);
     callback text-edited(string);
@@ -54,6 +56,11 @@ export component MainWindow inherits Window {
                 activated => { root.save-file(); }
             }
             MenuItem {
+                title: "Сохранить как…";
+                activated => { root.save-file-as(); }
+            }
+            MenuSeparator { }
+            MenuItem {
                 title: "Выход";
                 activated => { root.quit(); }
             }
@@ -62,6 +69,7 @@ export component MainWindow inherits Window {
             title: "Справка";
             MenuItem {
                 title: "О программе";
+                activated => { root.show-about(); }
             }
         }
     }

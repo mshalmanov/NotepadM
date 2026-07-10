@@ -1,0 +1,53 @@
+# CI: проверка кроссплатформенности — проект собирается
+# под Windows, Linux и macOS на каждый push/PR в ветку rust.
+name: CI
+
+on:
+  push:
+    branches: [rust]
+  pull_request:
+    branches: [rust]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # падение на одной ОС не отменяет остальные
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # Кэш зависимостей — без него каждая сборка компилировала бы Slint с нуля
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      # Системные библиотеки, нужные Slint/winit только на Linux
+      - name: Linux system deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libfontconfig1-dev
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy (линтер)
+        run: cargo clippy -- -D warnings
+
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: NotepadM-${{ runner.os }}
+          path: |
+            target/release/notepadm
+            target/release/notepadm.exe
+          if-no-files-found: error
