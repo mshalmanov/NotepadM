@@ -1,7 +1,7 @@
 # Архитектура NotepadM (Rust-версия)
 
-> Актуальное состояние на 2026-07-10. Документ перезаписывается по мере развития проекта;
-> история решений — в [dev-log.md](dev-log.md).
+> Актуальное состояние на 2026-07-10 (вечер: добавлены вкладки). Документ перезаписывается
+> по мере развития проекта; история решений — в [dev-log.md](dev-log.md).
 
 ## Обзор
 
@@ -23,24 +23,45 @@ docs/            документация (эта папка)
 Файлы исходной Java-версии удалены с этой ветки (2026-07-10); они остаются
 в ветках `master` (Swing) и `dev` (JavaFX).
 
+## Модель данных
+
+Источник истины — `Vec<Document>` в Rust (`Rc<RefCell<Vec<Document>>>`,
+разделяется между обработчиками):
+
+```rust
+struct Document {
+    path: Option<PathBuf>,  // None = новый несохранённый файл
+    text: String,           // полный текст документа
+    dirty: bool,            // есть несохранённые изменения
+}
+```
+
+Каждый документ — вкладка. UI получает производные данные: модель вкладок
+(`VecModel<TabInfo>`, где `TabInfo { title, dirty }` — общая структура, объявленная
+в `.slint`) и текст активного документа. Инвариант: всегда открыта хотя бы одна вкладка.
+
 ## Поток данных: разметка ⇄ логика
 
 Разметка объявляет **свойства** и **callbacks**; Rust-код читает/пишет свойства
 и вешает обработчики на callbacks. Прямая аналогия FXML ⇄ Controller из JavaFX.
 
 ```
-ui/main.slint                          src/main.rs
-─────────────                          ───────────
-in-out property document-text  ⇄       ui.get_document_text() / ui.set_document_text()
-in-out property current-file   ⇄       ui.set_current_file()   (путь для заголовка окна)
-callback new-file()            →       ui.on_new_file(|| ...)
-callback open-file()           →       ui.on_open_file(|| ...)  → rfd + fs::read_to_string
-callback save-file()           →       ui.on_save_file(|| ...)  → rfd + fs::write
-callback quit()                →       ui.on_quit(|| ...)       → slint::quit_event_loop()
+ui/main.slint                       src/main.rs
+─────────────                       ───────────
+property <[TabInfo]> tabs      ⇄    VecModel<TabInfo> (set_vec / set_row_data)
+property <int> current-tab     ⇄    индекс активного документа
+property <string> document-text ⇄   текст активного документа
+callback new-file()            →    добавить пустой Document, показать
+callback open-file()           →    rfd + fs::read_to_string → в пустую или новую вкладку
+callback save-file()           →    fs::write (диалог rfd, если пути ещё нет)
+callback select-tab(int)       →    показать документ по индексу
+callback close-tab(int)        →    подтверждение при dirty; убрать из Vec
+callback text-edited(string)   →    обновить text, выставить dirty
+callback quit()                →    slint::quit_event_loop()
 ```
 
-Состояние вне UI одно: `Rc<RefCell<Option<PathBuf>>>` — путь к открытому файлу
-(`None` = новый несохранённый документ). Разделяется между обработчиками через `Rc`.
+Заголовок окна и метки вкладок (`*` у изменённых) — реактивные выражения в разметке,
+пересчитываются при изменении модели автоматически.
 
 ## Соглашения
 

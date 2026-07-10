@@ -2,26 +2,41 @@
 // Концептуальный аналог MainForm.fxml из JavaFX-версии:
 // декларативное описание интерфейса, отделённое от логики (src/main.rs).
 
-import { TextEdit } from "std-widgets.slint";
+import { TextEdit, Palette } from "std-widgets.slint";
+
+// Структура «инфо о вкладке» — общая для разметки и Rust-кода:
+// компилятор Slint сгенерирует одноимённый Rust-тип TabInfo.
+export struct TabInfo {
+    title: string,
+    dirty: bool,
+}
 
 export component MainWindow inherits Window {
-    title: root.current-file == "" ? "NotepadM — новый файл" : "NotepadM — " + root.current-file;
+    title: root.tabs.length == 0
+        ? "NotepadM"
+        : "NotepadM — " + root.tabs[root.current-tab].title
+          + (root.tabs[root.current-tab].dirty ? " *" : "");
     preferred-width: 800px;
     preferred-height: 600px;
     min-width: 400px;
     min-height: 300px;
 
-    // Текст документа. Синхронизируется с Rust-кодом в обе стороны (<=>).
+    // Список вкладок. [TabInfo] — модель: Rust кладёт сюда VecModel,
+    // и блок for ниже автоматически перестраивается при изменениях.
+    in-out property <[TabInfo]> tabs;
+    // Индекс активной вкладки.
+    in-out property <int> current-tab;
+    // Текст активного документа (двусторонняя привязка к TextEdit).
     in-out property <string> document-text;
-    // Путь к открытому файлу (пустая строка = новый несохранённый файл).
-    in-out property <string> current-file;
 
     // Callbacks — «сигналы» в сторону Rust-кода.
-    // Аналог методов @FXML onNewAction/onOpenAction в MainFormController.
     callback new-file();
     callback open-file();
     callback save-file();
     callback quit();
+    callback select-tab(int);
+    callback close-tab(int);
+    callback text-edited(string);
 
     MenuBar {
         Menu {
@@ -51,8 +66,59 @@ export component MainWindow inherits Window {
         }
     }
 
-    TextEdit {
-        text <=> root.document-text;
-        wrap: word-wrap;
+    VerticalLayout {
+        // Панель вкладок: по одному «ярлыку» на каждый элемент модели tabs.
+        HorizontalLayout {
+            alignment: start;
+            height: 34px;
+
+            for tab[i] in root.tabs: Rectangle {
+                background: i == root.current-tab
+                    ? Palette.background
+                    : Palette.alternate-background;
+                border-width: 1px;
+                border-color: Palette.border;
+
+                // Клик по всей вкладке — переключение.
+                TouchArea {
+                    clicked => { root.select-tab(i); }
+                }
+
+                // Содержимое объявлено после TouchArea, поэтому кнопка
+                // закрытия перехватывает клики поверх него.
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 8px;
+                    spacing: 8px;
+
+                    Text {
+                        text: tab.dirty ? tab.title + " *" : tab.title;
+                        vertical-alignment: center;
+                        color: Palette.foreground;
+                    }
+
+                    Rectangle {
+                        width: 18px;
+                        close-area := TouchArea {
+                            clicked => { root.close-tab(i); }
+                        }
+                        Text {
+                            text: "✕";
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                            color: close-area.has-hover ? #d03030 : Palette.foreground;
+                        }
+                    }
+                }
+            }
+        }
+
+        TextEdit {
+            text <=> root.document-text;
+            wrap: word-wrap;
+            // Срабатывает только на ввод пользователя,
+            // не на программное изменение text из Rust.
+            edited(text) => { root.text-edited(text); }
+        }
     }
 }
