@@ -1,11 +1,8 @@
-# Project files
+# IDE
 .idea
 
-# Resource
-/src/main/resources/images/new/
+# Сборка Cargo
+/target/
 
-# Compiling flies
-/target/*
-
-# ETC
+# Прочее
 /backup/
