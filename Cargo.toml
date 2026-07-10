@@ -1,0 +1,13 @@
+[package]
+name = "notepadm"
+version = "0.1.0"
+edition = "2021"
+description = "NotepadM — текстовый редактор на Rust + Slint"
+license = "GPL-2.0-or-later"
+
+[dependencies]
+slint = "1"
+rfd = "0.15"
+
+[build-dependencies]
+slint-build = "1"

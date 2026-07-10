@@ -1,0 +1,58 @@
+// Разметка главного окна NotepadM.
+// Концептуальный аналог MainForm.fxml из JavaFX-версии:
+// декларативное описание интерфейса, отделённое от логики (src/main.rs).
+
+import { TextEdit } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: root.current-file == "" ? "NotepadM — новый файл" : "NotepadM — " + root.current-file;
+    preferred-width: 800px;
+    preferred-height: 600px;
+    min-width: 400px;
+    min-height: 300px;
+
+    // Текст документа. Синхронизируется с Rust-кодом в обе стороны (<=>).
+    in-out property <string> document-text;
+    // Путь к открытому файлу (пустая строка = новый несохранённый файл).
+    in-out property <string> current-file;
+
+    // Callbacks — «сигналы» в сторону Rust-кода.
+    // Аналог методов @FXML onNewAction/onOpenAction в MainFormController.
+    callback new-file();
+    callback open-file();
+    callback save-file();
+    callback quit();
+
+    MenuBar {
+        Menu {
+            title: "Файл";
+            MenuItem {
+                title: "Новый";
+                activated => { root.new-file(); }
+            }
+            MenuItem {
+                title: "Открыть…";
+                activated => { root.open-file(); }
+            }
+            MenuItem {
+                title: "Сохранить";
+                activated => { root.save-file(); }
+            }
+            MenuItem {
+                title: "Выход";
+                activated => { root.quit(); }
+            }
+        }
+        Menu {
+            title: "Справка";
+            MenuItem {
+                title: "О программе";
+            }
+        }
+    }
+
+    TextEdit {
+        text <=> root.document-text;
+        wrap: word-wrap;
+    }
+}
