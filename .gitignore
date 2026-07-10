@@ -1,8 +1,5 @@
-# IDE
-.idea
-
 # Сборка Cargo
 /target/
 
-# Прочее
-/backup/
+# Локальные настройки Claude Code (свои на каждой машине)
+.claude/settings.local.json

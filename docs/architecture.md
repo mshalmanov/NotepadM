@@ -6,7 +6,8 @@
 ## Обзор
 
 NotepadM — кроссплатформенный текстовый редактор (Windows / Linux / macOS).
-Стек: **Rust + Slint** (GUI) + **rfd** (нативные файловые диалоги).
+Стек: **Rust + Slint** (GUI) + **rfd** (нативные файловые диалоги) +
+**open** (открытие файлов программой по умолчанию — предпросмотр HTML в браузере).
 
 ## Структура
 
@@ -60,12 +61,25 @@ callback new-file()            →    добавить пустой Document, п
 callback open-file()           →    rfd + fs::read_to_string → в пустую или новую вкладку
 callback save-file()           →    save_document(..., always_ask: false)
 callback save-file-as()        →    save_document(..., always_ask: true)
+callback preview-in-browser()  →    сохранённый файл или temp-копия → open::that()
 callback select-tab(int)       →    показать документ по индексу
 callback close-tab(int)        →    подтверждение при dirty; убрать из Vec
 callback text-edited(string)   →    обновить text, выставить dirty
 callback show-about()          →    rfd::MessageDialog (версия из CARGO_PKG_VERSION)
 callback quit()                →    проверка dirty-документов → quit_event_loop()
+callback find-next(...)        →    find_matches + invoke_highlight (выделение)
+callback replace-one(...)      →    замена подсвеченного + find-next
+callback replace-all(...)      →    все вхождения одним проходом
 ```
+
+Обратный канал «Rust → UI»: публичная функция `highlight(start, end)` в разметке
+(выделяет найденное в редакторе), вызывается как `ui.invoke_highlight(...)`.
+Поиск: состояние в `SearchState` (запрос, позиция, текущее вхождение),
+`find_matches` возвращает байтовые границы; регистронезависимый режим — через
+строчную копию с картой смещений (см. dev-log, запись 8).
+
+Горячие клавиши: `FocusScope` вокруг содержимого окна ловит «всплывшие» нажатия —
+Ctrl+N/O/S, Ctrl+Shift+S, Ctrl+F/H, Ctrl+W, F3, Esc.
 
 Закрытие окна крестиком перехватывается `on_close_requested` — та же проверка
 несохранённых документов, что и у «Выход».

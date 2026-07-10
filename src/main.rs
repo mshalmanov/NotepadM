@@ -86,6 +86,7 @@ fn save_document(
     let Some(path) = known_path.or_else(|| {
         rfd::FileDialog::new()
             .add_filter("Текстовые файлы", &["txt"])
+            .add_filter("HTML", &["html", "htm"])
             .add_filter("Все файлы", &["*"])
             .set_file_name(suggested_name)
             .save_file()
@@ -102,6 +103,63 @@ fn save_document(
         }
         Err(err) => show_error("Ошибка сохранения", &err),
     }
+}
+
+/// Состояние поиска: последний запрос и позиция, с которой искать дальше.
+#[derive(Default)]
+struct SearchState {
+    term: String,
+    next_from: usize,
+    /// Последнее подсвеченное вхождение (байтовые границы) — цель «Заменить».
+    current: Option<(usize, usize)>,
+}
+
+/// Все вхождения `needle` в `haystack` — список (начало, конец) в байтах.
+fn find_matches(haystack: &str, needle: &str, case_sensitive: bool) -> Vec<(usize, usize)> {
+    if needle.is_empty() {
+        return Vec::new();
+    }
+    if case_sensitive {
+        let mut out = Vec::new();
+        let mut from = 0;
+        while let Some(p) = haystack[from..].find(needle) {
+            let start = from + p;
+            out.push((start, start + needle.len()));
+            from = start + needle.len();
+        }
+        return out;
+    }
+    // Регистронезависимый поиск. Просто сравнить to_lowercase() обеих строк
+    // нельзя: у некоторых символов при смене регистра меняется длина в байтах,
+    // и смещения «поплывут». Поэтому строим строчную копию вместе с картой
+    // соответствия её байтов байтам исходной строки.
+    let mut lower = String::new();
+    let mut map = Vec::new(); // байт в lower → байт начала символа в haystack
+    for (offset, ch) in haystack.char_indices() {
+        for low_ch in ch.to_lowercase() {
+            let before = lower.len();
+            lower.push(low_ch);
+            for _ in before..lower.len() {
+                map.push(offset);
+            }
+        }
+    }
+    let needle = needle.to_lowercase();
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(p) = lower[from..].find(&needle) {
+        let start = from + p;
+        let end = start + needle.len();
+        let orig_start = map[start];
+        let orig_end = if end < map.len() {
+            map[end]
+        } else {
+            haystack.len()
+        };
+        out.push((orig_start, orig_end));
+        from = end;
+    }
+    out
 }
 
 /// Заголовки всех несохранённых документов.
@@ -134,6 +192,7 @@ fn main() -> Result<(), slint::PlatformError> {
     // RefCell — контролируемая изменяемость.
     let docs: Rc<RefCell<Vec<Document>>> = Rc::new(RefCell::new(vec![Document::default()]));
     let tabs_model: Rc<VecModel<TabInfo>> = Rc::new(VecModel::default());
+    let search: Rc<RefCell<SearchState>> = Rc::new(RefCell::new(SearchState::default()));
 
     refresh_tabs(&tabs_model, &docs.borrow());
     ui.set_tabs(ModelRc::from(tabs_model.clone()));
@@ -157,10 +216,14 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_select_tab({
         let ui = ui.as_weak();
         let docs = docs.clone();
+        let search = search.clone();
         move |index| {
             let ui = ui.unwrap();
             let docs = docs.borrow();
             show_doc(&ui, &docs, index as usize);
+            // Другая вкладка — другой текст: позиция поиска неактуальна.
+            *search.borrow_mut() = SearchState::default();
+            ui.set_search_status("".into());
         }
     });
 
@@ -235,6 +298,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = ui.unwrap();
             let Some(path) = rfd::FileDialog::new()
                 .add_filter("Текстовые файлы", &["txt", "md", "rs", "toml"])
+                .add_filter("HTML", &["html", "htm"])
                 .add_filter("Все файлы", &["*"])
                 .pick_file()
             else {
@@ -290,6 +354,169 @@ fn main() -> Result<(), slint::PlatformError> {
         move || {
             let index = ui.unwrap().get_current_tab() as usize;
             save_document(&docs, &tabs, index, true);
+        }
+    });
+
+    // ---------- Поиск и замена ----------
+
+    // Записать новый текст в активный документ (после замены):
+    // обновляет и UI, и модель данных, и признак dirty.
+    fn apply_replacement(
+        ui: &MainWindow,
+        docs: &Rc<RefCell<Vec<Document>>>,
+        tabs: &VecModel<TabInfo>,
+        new_text: String,
+    ) {
+        let index = ui.get_current_tab() as usize;
+        let mut docs = docs.borrow_mut();
+        docs[index].text = new_text;
+        docs[index].dirty = true;
+        ui.set_document_text(docs[index].text.as_str().into());
+        tabs.set_row_data(index, docs[index].tab_info());
+    }
+
+    // «Найти далее»: следующее вхождение от текущей позиции, с переходом
+    // по кругу; найденное подсвечивается выделением (invoke_highlight).
+    ui.on_find_next({
+        let ui = ui.as_weak();
+        let search = search.clone();
+        move |term, case_sensitive| {
+            let ui = ui.unwrap();
+            let text = ui.get_document_text();
+            let matches = find_matches(text.as_str(), term.as_str(), case_sensitive);
+            let mut search = search.borrow_mut();
+
+            if search.term != term.as_str() {
+                // Новый запрос — искать с начала.
+                search.term = term.to_string();
+                search.next_from = 0;
+            }
+            if matches.is_empty() {
+                search.current = None;
+                ui.set_search_status(if term.is_empty() {
+                    "".into()
+                } else {
+                    "Не найдено".into()
+                });
+                return;
+            }
+            if search.next_from > text.len() {
+                search.next_from = 0; // текст стал короче — начинаем сначала
+            }
+            let from = search.next_from;
+            let (pos, m) = matches
+                .iter()
+                .enumerate()
+                .find(|(_, (start, _))| *start >= from)
+                .map(|(i, m)| (i, *m))
+                .unwrap_or((0, matches[0])); // дошли до конца — по кругу
+
+            search.next_from = m.1;
+            search.current = Some(m);
+            ui.set_search_status(format!("{}/{}", pos + 1, matches.len()).into());
+            ui.invoke_highlight(m.0 as i32, m.1 as i32);
+        }
+    });
+
+    // «Заменить»: заменяет подсвеченное вхождение и ищет следующее.
+    ui.on_replace_one({
+        let ui = ui.as_weak();
+        let docs = docs.clone();
+        let tabs = tabs_model.clone();
+        let search = search.clone();
+        move |term, replacement, case_sensitive| {
+            let ui = ui.unwrap();
+            let text = ui.get_document_text().to_string();
+
+            // Есть ли актуальное подсвеченное вхождение? (Текст могли
+            // отредактировать после поиска — тогда границы устарели.)
+            let current = search.borrow().current.filter(|(start, end)| {
+                text.get(*start..*end).is_some_and(|slice| {
+                    if case_sensitive {
+                        slice == term.as_str()
+                    } else {
+                        slice.to_lowercase() == term.to_lowercase()
+                    }
+                })
+            });
+
+            if let Some((start, end)) = current {
+                let mut new_text = String::with_capacity(text.len());
+                new_text.push_str(&text[..start]);
+                new_text.push_str(replacement.as_str());
+                new_text.push_str(&text[end..]);
+                apply_replacement(&ui, &docs, &tabs, new_text);
+
+                let mut search = search.borrow_mut();
+                search.current = None;
+                search.next_from = start + replacement.len();
+            }
+            // И в любом случае — найти следующее (или первое) вхождение.
+            ui.invoke_find_next(term, case_sensitive);
+        }
+    });
+
+    // «Заменить все»: одним проходом, статус — сколько заменили.
+    ui.on_replace_all({
+        let ui = ui.as_weak();
+        let docs = docs.clone();
+        let tabs = tabs_model.clone();
+        let search = search.clone();
+        move |term, replacement, case_sensitive| {
+            let ui = ui.unwrap();
+            let text = ui.get_document_text().to_string();
+            let matches = find_matches(&text, term.as_str(), case_sensitive);
+            if matches.is_empty() {
+                ui.set_search_status("Не найдено".into());
+                return;
+            }
+
+            // Склеиваем результат из кусков: [до вхождения] + замена + …
+            let mut new_text = String::with_capacity(text.len());
+            let mut tail_start = 0;
+            for (start, end) in &matches {
+                new_text.push_str(&text[tail_start..*start]);
+                new_text.push_str(replacement.as_str());
+                tail_start = *end;
+            }
+            new_text.push_str(&text[tail_start..]);
+            apply_replacement(&ui, &docs, &tabs, new_text);
+
+            let mut search = search.borrow_mut();
+            search.current = None;
+            search.next_from = 0;
+            ui.set_search_status(format!("Заменено: {}", matches.len()).into());
+        }
+    });
+
+    // «Файл → Предпросмотр в браузере»: сохранённый файл открывается
+    // как есть (работают относительные ссылки и картинки рядом с ним);
+    // несохранённый текст выгружается во временный файл.
+    ui.on_preview_in_browser({
+        let ui = ui.as_weak();
+        let docs = docs.clone();
+        move || {
+            let ui = ui.unwrap();
+            let index = ui.get_current_tab() as usize;
+
+            let target = {
+                let docs = docs.borrow();
+                let doc = &docs[index];
+                match (&doc.path, doc.dirty) {
+                    // Файл на диске актуален — открываем его самого.
+                    (Some(path), false) => Ok(path.clone()),
+                    // Иначе — текущий текст во временный файл.
+                    _ => {
+                        let tmp = std::env::temp_dir().join("notepadm-preview.html");
+                        fs::write(&tmp, doc.text.as_bytes()).map(|_| tmp)
+                    }
+                }
+            };
+
+            match target.and_then(|path| open::that(&path).map(|_| path)) {
+                Ok(_) => {}
+                Err(err) => show_error("Ошибка предпросмотра", &err),
+            }
         }
     });
 

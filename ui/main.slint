@@ -2,7 +2,7 @@
 // Концептуальный аналог MainForm.fxml из JavaFX-версии:
 // декларативное описание интерфейса, отделённое от логики (src/main.rs).
 
-import { TextEdit, Palette, Button } from "std-widgets.slint";
+import { TextEdit, LineEdit, Button, CheckBox, Palette } from "std-widgets.slint";
 
 // Структура «инфо о вкладке» — общая для разметки и Rust-кода:
 // компилятор Slint сгенерирует одноимённый Rust-тип TabInfo.
@@ -32,17 +32,42 @@ export component MainWindow inherits Window {
     in-out property <int> current-tab;
     // Текст активного документа (двусторонняя привязка к TextEdit).
     in-out property <string> document-text;
+    // Панель поиска: видимость и строка статуса («3/17», «Не найдено»…).
+    in-out property <bool> search-visible: false;
+    in-out property <string> search-status;
 
     // Callbacks — «сигналы» в сторону Rust-кода.
     callback new-file();
     callback open-file();
     callback save-file();
     callback save-file-as();
+    callback preview-in-browser();
     callback quit();
     callback show-about();
     callback select-tab(int);
     callback close-tab(int);
     callback text-edited(string);
+    // Поиск/замена: (что искать, [на что менять,] учитывать регистр).
+    callback find-next(string, bool);
+    callback replace-one(string, string, bool);
+    callback replace-all(string, string, bool);
+
+    // Публичная функция — Rust вызывает её, чтобы подсветить найденное
+    // (invoke_highlight на стороне Rust).
+    public function highlight(start: int, end: int) {
+        editor.set-selection-offsets(start, end);
+        editor.focus();
+    }
+
+    // Открыть панель поиска с фокусом в нужном поле.
+    function open-search(to-replace: bool) {
+        root.search-visible = true;
+        if (to-replace) {
+            replace-input.focus();
+        } else {
+            search-input.focus();
+        }
+    }
 
     MenuBar {
         Menu {
@@ -69,9 +94,42 @@ export component MainWindow inherits Window {
             }
             MenuSeparator { }
             MenuItem {
+                title: "Предпросмотр в браузере";
+                activated => { root.preview-in-browser(); }
+            }
+            MenuSeparator { }
+            MenuItem {
                 title: "Выход";
                 icon: @image-url("images/Exit.png");
                 activated => { root.quit(); }
+            }
+        }
+        Menu {
+            title: "Правка";
+            MenuItem {
+                title: "Вырезать";
+                icon: @image-url("images/Cut.png");
+                activated => { editor.cut(); }
+            }
+            MenuItem {
+                title: "Копировать";
+                icon: @image-url("images/Copy.png");
+                activated => { editor.copy(); }
+            }
+            MenuItem {
+                title: "Вставить";
+                icon: @image-url("images/Paste.png");
+                activated => { editor.paste(); }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Найти…";
+                icon: @image-url("images/Find.png");
+                activated => { root.open-search(false); }
+            }
+            MenuItem {
+                title: "Заменить…";
+                activated => { root.open-search(true); }
             }
         }
         Menu {
@@ -83,93 +141,181 @@ export component MainWindow inherits Window {
         }
     }
 
-    VerticalLayout {
-        // Панель инструментов — как JToolBar в Swing-версии.
-        // Новый/Открыть/Сохранить дёргают те же callbacks, что и меню;
-        // Вырезать/Копировать/Вставить вызывают функции редактора напрямую.
-        HorizontalLayout {
-            padding: 4px;
-            spacing: 4px;
-            alignment: start;
-
-            Button {
-                icon: @image-url("images/New.png");
-                clicked => { root.new-file(); }
+    // FocusScope ловит горячие клавиши. Нажатия, которые не обработал
+    // сфокусированный элемент (редактор, поле ввода), «всплывают» сюда.
+    FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control) {
+                if (event.text.to-lowercase() == "n") { root.new-file(); return accept; }
+                if (event.text.to-lowercase() == "o") { root.open-file(); return accept; }
+                if (event.text.to-lowercase() == "s" && event.modifiers.shift) { root.save-file-as(); return accept; }
+                if (event.text.to-lowercase() == "s") { root.save-file(); return accept; }
+                if (event.text.to-lowercase() == "f") { root.open-search(false); return accept; }
+                if (event.text.to-lowercase() == "h") { root.open-search(true); return accept; }
+                if (event.text.to-lowercase() == "w") { root.close-tab(root.current-tab); return accept; }
             }
-            Button {
-                icon: @image-url("images/Open.png");
-                clicked => { root.open-file(); }
+            if (event.text == Key.F3) {
+                root.find-next(search-input.text, case-box.checked);
+                return accept;
             }
-            Button {
-                icon: @image-url("images/Save.png");
-                clicked => { root.save-file(); }
+            if (event.text == Key.Escape && root.search-visible) {
+                root.search-visible = false;
+                editor.focus();
+                return accept;
             }
-            Button {
-                icon: @image-url("images/Cut.png");
-                clicked => { editor.cut(); }
-            }
-            Button {
-                icon: @image-url("images/Copy.png");
-                clicked => { editor.copy(); }
-            }
-            Button {
-                icon: @image-url("images/Paste.png");
-                clicked => { editor.paste(); }
-            }
+            return reject;
         }
 
-        // Панель вкладок: по одному «ярлыку» на каждый элемент модели tabs.
-        HorizontalLayout {
-            alignment: start;
-            height: 34px;
+        VerticalLayout {
+            // Панель инструментов — как JToolBar в Swing-версии.
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: start;
 
-            for tab[i] in root.tabs: Rectangle {
-                background: i == root.current-tab
-                    ? Palette.background
-                    : Palette.alternate-background;
-                border-width: 1px;
-                border-color: Palette.border;
-
-                // Клик по всей вкладке — переключение.
-                TouchArea {
-                    clicked => { root.select-tab(i); }
+                Button {
+                    icon: @image-url("images/New.png");
+                    clicked => { root.new-file(); }
                 }
+                Button {
+                    icon: @image-url("images/Open.png");
+                    clicked => { root.open-file(); }
+                }
+                Button {
+                    icon: @image-url("images/Save.png");
+                    clicked => { root.save-file(); }
+                }
+                Button {
+                    icon: @image-url("images/Cut.png");
+                    clicked => { editor.cut(); }
+                }
+                Button {
+                    icon: @image-url("images/Copy.png");
+                    clicked => { editor.copy(); }
+                }
+                Button {
+                    icon: @image-url("images/Paste.png");
+                    clicked => { editor.paste(); }
+                }
+                Button {
+                    icon: @image-url("images/Find.png");
+                    clicked => { root.open-search(false); }
+                }
+            }
 
-                // Содержимое объявлено после TouchArea, поэтому кнопка
-                // закрытия перехватывает клики поверх него.
-                HorizontalLayout {
-                    padding-left: 12px;
-                    padding-right: 8px;
-                    spacing: 8px;
+            // Панель поиска/замены. Не через `if` — к элементам внутри
+            // условных блоков нельзя обращаться извне (нужен focus()),
+            // поэтому панель всегда существует, но схлопывается в 0 по высоте.
+            search-panel := Rectangle {
+                visible: root.search-visible;
+                height: root.search-visible ? search-content.preferred-height : 0px;
+                clip: true;
+                background: Palette.alternate-background;
 
-                    Text {
-                        text: tab.dirty ? tab.title + " *" : tab.title;
-                        vertical-alignment: center;
-                        color: Palette.foreground;
-                    }
+                search-content := VerticalLayout {
+                    padding: 6px;
+                    spacing: 6px;
 
-                    Rectangle {
-                        width: 18px;
-                        close-area := TouchArea {
-                            clicked => { root.close-tab(i); }
+                    HorizontalLayout {
+                        spacing: 6px;
+
+                        search-input := LineEdit {
+                            placeholder-text: "Найти…";
+                            // Enter в поле — искать дальше.
+                            accepted(text) => { root.find-next(text, case-box.checked); }
+                        }
+                        Button {
+                            text: "Найти далее (F3)";
+                            clicked => { root.find-next(search-input.text, case-box.checked); }
+                        }
+                        case-box := CheckBox {
+                            text: "Учитывать регистр";
+                            checked: true;
                         }
                         Text {
-                            text: "✕";
+                            text: root.search-status;
                             vertical-alignment: center;
-                            horizontal-alignment: center;
-                            color: close-area.has-hover ? #d03030 : Palette.foreground;
+                        }
+                        Button {
+                            text: "✕";
+                            clicked => {
+                                root.search-visible = false;
+                                editor.focus();
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 6px;
+
+                        replace-input := LineEdit {
+                            placeholder-text: "Заменить на…";
+                        }
+                        Button {
+                            text: "Заменить";
+                            clicked => { root.replace-one(search-input.text, replace-input.text, case-box.checked); }
+                        }
+                        Button {
+                            text: "Заменить все";
+                            clicked => { root.replace-all(search-input.text, replace-input.text, case-box.checked); }
                         }
                     }
                 }
             }
-        }
 
-        editor := TextEdit {
-            text <=> root.document-text;
-            wrap: word-wrap;
-            // Срабатывает только на ввод пользователя,
-            // не на программное изменение text из Rust.
-            edited(text) => { root.text-edited(text); }
+            // Панель вкладок: по одному «ярлыку» на каждый элемент модели tabs.
+            HorizontalLayout {
+                alignment: start;
+                height: 34px;
+
+                for tab[i] in root.tabs: Rectangle {
+                    background: i == root.current-tab
+                        ? Palette.background
+                        : Palette.alternate-background;
+                    border-width: 1px;
+                    border-color: Palette.border;
+
+                    // Клик по всей вкладке — переключение.
+                    TouchArea {
+                        clicked => { root.select-tab(i); }
+                    }
+
+                    // Содержимое объявлено после TouchArea, поэтому кнопка
+                    // закрытия перехватывает клики поверх него.
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 8px;
+                        spacing: 8px;
+
+                        Text {
+                            text: tab.dirty ? tab.title + " *" : tab.title;
+                            vertical-alignment: center;
+                            color: Palette.foreground;
+                        }
+
+                        Rectangle {
+                            width: 18px;
+                            close-area := TouchArea {
+                                clicked => { root.close-tab(i); }
+                            }
+                            Text {
+                                text: "✕";
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                                color: close-area.has-hover ? #d03030 : Palette.foreground;
+                            }
+                        }
+                    }
+                }
+            }
+
+            editor := TextEdit {
+                text <=> root.document-text;
+                wrap: word-wrap;
+                // Срабатывает только на ввод пользователя,
+                // не на программное изменение text из Rust.
+                edited(text) => { root.text-edited(text); }
+            }
         }
     }
 }
