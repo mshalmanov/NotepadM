@@ -18,14 +18,29 @@ slint::include_modules!();
 
 /// Один открытый документ (вкладка).
 /// Источник истины — этот Vec в Rust; UI лишь отображает его.
-#[derive(Default)]
 struct Document {
     /// Путь к файлу; None = новый, ещё не сохранённый документ.
     path: Option<PathBuf>,
-    /// Полный текст документа.
+    /// Полный текст документа (в памяти — всегда UTF-8).
     text: String,
     /// Есть несохранённые изменения.
     dirty: bool,
+    /// Кодировка исходного файла — при сохранении используется она же,
+    /// чтобы не менять кодировку чужих файлов втихую.
+    encoding: &'static encoding_rs::Encoding,
+}
+
+// Default нельзя сгенерировать через #[derive]: для &'static Encoding
+// нет «значения по умолчанию» — задаём своё (UTF-8 для новых файлов).
+impl Default for Document {
+    fn default() -> Self {
+        Self {
+            path: None,
+            text: String::new(),
+            dirty: false,
+            encoding: encoding_rs::UTF_8,
+        }
+    }
 }
 
 impl Document {
@@ -76,11 +91,11 @@ fn save_document(
 ) {
     // Короткий заём: берём из документа только нужное и отпускаем,
     // чтобы не держать RefCell занятым во время модального диалога.
-    let (known_path, suggested_name) = {
+    let (known_path, suggested_name, encoding) = {
         let docs = docs.borrow();
         let doc = &docs[index];
         let known = if always_ask { None } else { doc.path.clone() };
-        (known, doc.title())
+        (known, doc.title(), doc.encoding)
     };
 
     let Some(path) = known_path.or_else(|| {
@@ -95,7 +110,13 @@ fn save_document(
     };
 
     let mut docs = docs.borrow_mut();
-    match fs::write(&path, docs[index].text.as_bytes()) {
+    // Кодируем текст обратно в кодировку исходного файла. Вложенный блок,
+    // чтобы заём текста (bytes) закончился до изменения docs[index] ниже.
+    let write_result = {
+        let (bytes, _, _) = encoding.encode(&docs[index].text);
+        fs::write(&path, &bytes)
+    };
+    match write_result {
         Ok(()) => {
             docs[index].path = Some(path);
             docs[index].dirty = false;
@@ -103,6 +124,22 @@ fn save_document(
         }
         Err(err) => show_error("Ошибка сохранения", &err),
     }
+}
+
+/// Превратить сырые байты файла в текст.
+/// Сначала пробуем строгий UTF-8; если байты им не являются — определяем
+/// кодировку эвристикой (chardetng) и декодируем через encoding_rs.
+fn decode_bytes(bytes: &[u8]) -> (String, &'static encoding_rs::Encoding) {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        // Убираем BOM (метку порядка байтов), если файл начинается с неё.
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        return (text.to_owned(), encoding_rs::UTF_8);
+    }
+    let mut detector = chardetng::EncodingDetector::new();
+    detector.feed(bytes, true);
+    let encoding = detector.guess(None, true);
+    let (text, _, _) = encoding.decode(bytes);
+    (text.into_owned(), encoding)
 }
 
 /// Состояние поиска: последний запрос и позиция, с которой искать дальше.
@@ -304,8 +341,11 @@ fn main() -> Result<(), slint::PlatformError> {
             else {
                 return; // пользователь отменил диалог
             };
-            let text = match fs::read_to_string(&path) {
-                Ok(text) => text,
+            // Читаем сырые байты и определяем кодировку сами:
+            // fs::read_to_string умеет только UTF-8, а старые русские
+            // .txt часто в Windows-1251.
+            let (text, encoding) = match fs::read(&path) {
+                Ok(bytes) => decode_bytes(&bytes),
                 Err(err) => {
                     show_error("Ошибка открытия", &err);
                     return;
@@ -318,6 +358,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 path: Some(path),
                 text,
                 dirty: false,
+                encoding,
             };
 
             let pristine = docs[current].path.is_none()
@@ -561,4 +602,93 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     ui.run()
+}
+
+// Юнит-тесты. Компилируются только при `cargo test` (#[cfg(test)]),
+// в обычную сборку не попадают. Живут в том же файле, что и код, —
+// стандартное для Rust расположение тестов «чистых» функций.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---------- find_matches ----------
+
+    #[test]
+    fn finds_all_occurrences() {
+        assert_eq!(find_matches("aXbXc", "X", true), vec![(1, 2), (3, 4)]);
+    }
+
+    #[test]
+    fn case_sensitive_skips_other_case() {
+        assert_eq!(find_matches("Xx", "x", true), vec![(1, 2)]);
+    }
+
+    #[test]
+    fn case_insensitive_ascii() {
+        assert_eq!(find_matches("Rust rust RUST", "rust", false).len(), 3);
+    }
+
+    #[test]
+    fn case_insensitive_cyrillic_offsets_are_valid() {
+        // Кириллица в UTF-8 — 2 байта на букву: проверяем, что границы
+        // вхождений указывают на настоящие символы, а не «поплыли».
+        let text = "Привет, мир! привет. ПРИВЕТ!";
+        let matches = find_matches(text, "привет", false);
+        assert_eq!(matches.len(), 3);
+        for (start, end) in matches {
+            assert_eq!(text[start..end].to_lowercase(), "привет");
+        }
+    }
+
+    #[test]
+    fn adjacent_matches_do_not_overlap() {
+        assert_eq!(find_matches("aaaa", "aa", true), vec![(0, 2), (2, 4)]);
+    }
+
+    #[test]
+    fn empty_needle_finds_nothing() {
+        assert!(find_matches("abc", "", true).is_empty());
+    }
+
+    #[test]
+    fn absent_needle_finds_nothing() {
+        assert!(find_matches("abc", "z", false).is_empty());
+    }
+
+    // ---------- decode_bytes ----------
+
+    #[test]
+    fn utf8_decodes_as_is() {
+        let (text, encoding) = decode_bytes("Привет, мир!".as_bytes());
+        assert_eq!(text, "Привет, мир!");
+        assert_eq!(encoding, encoding_rs::UTF_8);
+    }
+
+    #[test]
+    fn utf8_bom_is_stripped() {
+        let (text, _) = decode_bytes("\u{feff}abc".as_bytes());
+        assert_eq!(text, "abc");
+    }
+
+    #[test]
+    fn windows_1251_is_detected_and_decoded() {
+        let original = "Привет, мир! Это старый текстовый файл, сохранённый в Windows.";
+        // encode() возвращает байты в указанной кодировке — Windows-1251
+        // однобайтовая, для UTF-8-декодера эти байты невалидны.
+        let (bytes, _, _) = encoding_rs::WINDOWS_1251.encode(original);
+        let (text, encoding) = decode_bytes(&bytes);
+        assert_eq!(text, original);
+        assert_ne!(encoding, encoding_rs::UTF_8);
+    }
+
+    #[test]
+    fn detected_encoding_roundtrips_on_save() {
+        // Сценарий «открыли 1251 → правим → сохраняем»: текст должен
+        // вернуться в исходную кодировку без потерь.
+        let original = "Съешь ещё этих мягких французских булок, да выпей же чаю.";
+        let (bytes_1251, _, _) = encoding_rs::WINDOWS_1251.encode(original);
+        let (text, encoding) = decode_bytes(&bytes_1251);
+        let (bytes_back, _, _) = encoding.encode(&text);
+        assert_eq!(bytes_back.as_ref(), bytes_1251.as_ref());
+    }
 }

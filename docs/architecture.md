@@ -37,10 +37,15 @@ docs/            документация (эта папка)
 ```rust
 struct Document {
     path: Option<PathBuf>,  // None = новый несохранённый файл
-    text: String,           // полный текст документа
+    text: String,           // полный текст документа (в памяти всегда UTF-8)
     dirty: bool,            // есть несохранённые изменения
+    encoding: &'static Encoding, // кодировка исходного файла; сохраняем в ней же
 }
 ```
+
+Чтение файла: `fs::read` (байты) → `decode_bytes` (строгий UTF-8, иначе
+автоопределение chardetng + декодирование encoding_rs). Запись — обратное
+кодирование в `document.encoding`. Тесты этой логики — `mod tests` в main.rs.
 
 Каждый документ — вкладка. UI получает производные данные: модель вкладок
 (`VecModel<TabInfo>`, где `TabInfo { title, dirty }` — общая структура, объявленная
