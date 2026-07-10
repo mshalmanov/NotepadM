@@ -2,7 +2,7 @@
 // Концептуальный аналог MainForm.fxml из JavaFX-версии:
 // декларативное описание интерфейса, отделённое от логики (src/main.rs).
 
-import { TextEdit, Palette } from "std-widgets.slint";
+import { TextEdit, Palette, Button } from "std-widgets.slint";
 
 // Структура «инфо о вкладке» — общая для разметки и Rust-кода:
 // компилятор Slint сгенерирует одноимённый Rust-тип TabInfo.
@@ -20,6 +20,10 @@ export component MainWindow inherits Window {
     preferred-height: 600px;
     min-width: 400px;
     min-height: 300px;
+    // Иконка окна (панель задач / заголовок). @image-url встраивает
+    // картинку в бинарник на этапе компиляции — отдельных файлов
+    // рядом с .exe не нужно.
+    icon: @image-url("images/NotepadM.png");
 
     // Список вкладок. [TabInfo] — модель: Rust кладёт сюда VecModel,
     // и блок for ниже автоматически перестраивается при изменениях.
@@ -45,23 +49,28 @@ export component MainWindow inherits Window {
             title: "Файл";
             MenuItem {
                 title: "Новый";
+                icon: @image-url("images/New.png");
                 activated => { root.new-file(); }
             }
             MenuItem {
                 title: "Открыть…";
+                icon: @image-url("images/Open.png");
                 activated => { root.open-file(); }
             }
             MenuItem {
                 title: "Сохранить";
+                icon: @image-url("images/Save.png");
                 activated => { root.save-file(); }
             }
             MenuItem {
                 title: "Сохранить как…";
+                icon: @image-url("images/Save.png");
                 activated => { root.save-file-as(); }
             }
             MenuSeparator { }
             MenuItem {
                 title: "Выход";
+                icon: @image-url("images/Exit.png");
                 activated => { root.quit(); }
             }
         }
@@ -75,6 +84,40 @@ export component MainWindow inherits Window {
     }
 
     VerticalLayout {
+        // Панель инструментов — как JToolBar в Swing-версии.
+        // Новый/Открыть/Сохранить дёргают те же callbacks, что и меню;
+        // Вырезать/Копировать/Вставить вызывают функции редактора напрямую.
+        HorizontalLayout {
+            padding: 4px;
+            spacing: 4px;
+            alignment: start;
+
+            Button {
+                icon: @image-url("images/New.png");
+                clicked => { root.new-file(); }
+            }
+            Button {
+                icon: @image-url("images/Open.png");
+                clicked => { root.open-file(); }
+            }
+            Button {
+                icon: @image-url("images/Save.png");
+                clicked => { root.save-file(); }
+            }
+            Button {
+                icon: @image-url("images/Cut.png");
+                clicked => { editor.cut(); }
+            }
+            Button {
+                icon: @image-url("images/Copy.png");
+                clicked => { editor.copy(); }
+            }
+            Button {
+                icon: @image-url("images/Paste.png");
+                clicked => { editor.paste(); }
+            }
+        }
+
         // Панель вкладок: по одному «ярлыку» на каждый элемент модели tabs.
         HorizontalLayout {
             alignment: start;
@@ -121,7 +164,7 @@ export component MainWindow inherits Window {
             }
         }
 
-        TextEdit {
+        editor := TextEdit {
             text <=> root.document-text;
             wrap: word-wrap;
             // Срабатывает только на ввод пользователя,
