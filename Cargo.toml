@@ -14,3 +14,7 @@ chardetng = "0.1"
 
 [build-dependencies]
 slint-build = "1"
+
+# Только при сборке под Windows: встраивание иконки в ресурсы .exe.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

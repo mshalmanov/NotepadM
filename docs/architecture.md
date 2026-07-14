@@ -13,7 +13,8 @@ NotepadM — кроссплатформенный текстовый редак�
 
 ```
 Cargo.toml       манифест пакета и зависимости
-build.rs         компиляция ui/main.slint в Rust-код на этапе сборки
+build.rs         компиляция ui/main.slint в Rust-код; на Windows — ещё и
+                 встраивание иконки в ресурсы .exe (winresource + NotepadM.ico)
 ui/
   main.slint     разметка главного окна (меню, тулбар, вкладки, редактор)
   images/        иконки (встраиваются в бинарник через @image-url)
