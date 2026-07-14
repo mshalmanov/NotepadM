@@ -53,8 +53,8 @@
 
 По итогам ревизии проекта (2026-07-15), в порядке отдачи:
 
-- [ ] `[profile.release]` в Cargo.toml: `lto = true`, `codegen-units = 1`,
-      `strip = true` — минус 30–50 % от 15,8 МБ exe, быстрый выигрыш
+- [x] `[profile.release]` в Cargo.toml: lto, codegen-units, strip, opt-level="s",
+      panic="abort" — 15,8 → 9,7 МБ (−38 %) — [запись 15](dev-log.md)
 - [x] не копировать весь текст на каждое нажатие: ленивая синхронизация
       (`sync_active_doc` в точках синхронизации; при вводе — только dirty) —
       [запись 14](dev-log.md)
