@@ -33,7 +33,13 @@ docs/            документация (эта папка)
 ## Модель данных
 
 Источник истины — `Vec<Document>` в Rust (`Rc<RefCell<Vec<Document>>>`,
-разделяется между обработчиками):
+разделяется между обработчиками) — с одним исключением: **текст активной
+вкладки** живёт в UI-свойстве `document-text`. Копировать его в `Document`
+на каждое нажатие дорого (копия всего документа), поэтому при вводе ставится
+только флаг `dirty`, а текст списывается в модель функцией `sync_active_doc`
+в точках синхронизации: смена/закрытие вкладки, сохранение, открытие файла,
+предпросмотр. Инвариант: у неактивных вкладок и у вкладок без `dirty`
+поле `text` всегда актуально.
 
 ```rust
 struct Document {
@@ -72,7 +78,7 @@ callback save-file-as()        →    save_document(..., always_ask: true)
 callback preview-in-browser()  →    сохранённый файл или temp-копия → open::that()
 callback select-tab(int)       →    показать документ по индексу
 callback close-tab(int)        →    подтверждение при dirty; убрать из Vec
-callback text-edited(string)   →    обновить text, выставить dirty
+callback text-edited(string)   →    выставить dirty (текст — лениво, sync_active_doc)
 callback show-about()          →    rfd::MessageDialog (версия из CARGO_PKG_VERSION)
 callback quit()                →    проверка dirty-документов → quit_event_loop()
 callback find-next(...)        →    find_matches + invoke_highlight (выделение)

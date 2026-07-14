@@ -73,6 +73,22 @@ fn show_doc(ui: &MainWindow, docs: &[Document], index: usize) {
     ui.set_document_text(docs[index].text.as_str().into());
 }
 
+/// Списать текст активного документа из UI в модель.
+///
+/// Текст активной вкладки живёт в UI-свойстве `document-text`: копировать его
+/// в `Document` на каждое нажатие клавиши дорого (это копия всего документа).
+/// Вместо этого при вводе выставляется только флаг dirty, а сюда мы приходим
+/// в «точках синхронизации» — перед сохранением, сменой активной вкладки,
+/// открытием файла, предпросмотром. Инвариант: у неактивных вкладок и у вкладок
+/// без dirty поле `text` всегда актуально.
+fn sync_active_doc(ui: &MainWindow, docs: &RefCell<Vec<Document>>) {
+    let index = ui.get_current_tab() as usize;
+    let mut docs = docs.borrow_mut();
+    if docs[index].dirty {
+        docs[index].text = ui.get_document_text().to_string();
+    }
+}
+
 fn show_error(title: &str, err: &std::io::Error) {
     rfd::MessageDialog::new()
         .set_title(title)
@@ -148,6 +164,10 @@ fn open_path(
     tabs: &VecModel<TabInfo>,
     path: PathBuf,
 ) {
+    // Уходим с активной вкладки (и проверка pristine ниже смотрит
+    // на актуальный текст).
+    sync_active_doc(ui, docs);
+
     let existing = docs
         .borrow()
         .iter()
@@ -306,6 +326,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let tabs = tabs_model.clone();
         move || {
             let ui = ui.unwrap();
+            sync_active_doc(&ui, &docs); // уходим с активной вкладки
             let mut docs = docs.borrow_mut();
             docs.push(Document::default());
             refresh_tabs(&tabs, &docs);
@@ -320,6 +341,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let search = search.clone();
         move |index| {
             let ui = ui.unwrap();
+            sync_active_doc(&ui, &docs); // уходим с активной вкладки
             let docs = docs.borrow();
             show_doc(&ui, &docs, index as usize);
             // Другая вкладка — другой текст: позиция поиска неактуальна.
@@ -328,17 +350,18 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // Ввод текста: сохранить в документ и пометить вкладку изменённой.
+    // Ввод текста: только пометить вкладку изменённой. Сам текст в Document
+    // не копируем — он списывается из UI лениво, в точках синхронизации
+    // (sync_active_doc); копировать весь документ на каждое нажатие дорого.
     ui.on_text_edited({
         let ui = ui.as_weak();
         let docs = docs.clone();
         let tabs = tabs_model.clone();
-        move |text| {
+        move |_text| {
             let ui = ui.unwrap();
             let index = ui.get_current_tab() as usize;
             let mut docs = docs.borrow_mut();
             let doc = &mut docs[index];
-            doc.text = text.to_string();
             if !doc.dirty {
                 doc.dirty = true;
                 tabs.set_row_data(index, doc.tab_info());
@@ -354,6 +377,9 @@ fn main() -> Result<(), slint::PlatformError> {
         move |index| {
             let ui = ui.unwrap();
             let index = index as usize;
+            // Синхронизация: после удаления вкладки show_doc заново заливает
+            // текст из модели — он должен быть свежим и для активной вкладки.
+            sync_active_doc(&ui, &docs);
 
             // Читаем нужные данные и сразу отпускаем заём (borrow),
             // чтобы не держать его открытым во время модального диалога.
@@ -415,7 +441,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let docs = docs.clone();
         let tabs = tabs_model.clone();
         move || {
-            let index = ui.unwrap().get_current_tab() as usize;
+            let ui = ui.unwrap();
+            sync_active_doc(&ui, &docs); // сохраняем то, что видно в редакторе
+            let index = ui.get_current_tab() as usize;
             save_document(&docs, &tabs, index, false);
         }
     });
@@ -426,7 +454,9 @@ fn main() -> Result<(), slint::PlatformError> {
         let docs = docs.clone();
         let tabs = tabs_model.clone();
         move || {
-            let index = ui.unwrap().get_current_tab() as usize;
+            let ui = ui.unwrap();
+            sync_active_doc(&ui, &docs); // сохраняем то, что видно в редакторе
+            let index = ui.get_current_tab() as usize;
             save_document(&docs, &tabs, index, true);
         }
     });
@@ -571,6 +601,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let docs = docs.clone();
         move || {
             let ui = ui.unwrap();
+            sync_active_doc(&ui, &docs); // показываем то, что видно в редакторе
             let index = ui.get_current_tab() as usize;
 
             let target = {
