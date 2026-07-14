@@ -6,7 +6,9 @@ description = "NotepadM — текстовый редактор на Rust + Slin
 license = "GPL-2.0-or-later"
 
 [dependencies]
-slint = "1"
+# unstable-winit-030 — доступ к событиям окна из библиотеки winit
+# (перетаскивание файлов из проводника Slint сам пока не отдаёт).
+slint = { version = "1", features = ["unstable-winit-030"] }
 rfd = "0.15"
 open = "5"
 encoding_rs = "0.8"

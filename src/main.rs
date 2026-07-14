@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use slint::{Model, ModelRc, VecModel};
@@ -124,6 +124,70 @@ fn save_document(
         }
         Err(err) => show_error("Ошибка сохранения", &err),
     }
+}
+
+/// Один и тот же ли это файл? Прямое сравнение путей ловит точное совпадение,
+/// канонизация — разные написания одного пути (относительный/абсолютный,
+/// `..`, разный регистр букв диска и т.п.).
+fn is_same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
+}
+
+/// Открыть файл по пути — общий код для диалога «Открыть…», аргументов
+/// командной строки и перетаскивания файла в окно.
+/// Если файл уже открыт — просто переключаемся на его вкладку.
+fn open_path(
+    ui: &MainWindow,
+    docs: &RefCell<Vec<Document>>,
+    tabs: &VecModel<TabInfo>,
+    path: PathBuf,
+) {
+    let existing = docs
+        .borrow()
+        .iter()
+        .position(|doc| doc.path.as_deref().is_some_and(|p| is_same_file(p, &path)));
+    if let Some(index) = existing {
+        show_doc(ui, &docs.borrow(), index);
+        return;
+    }
+
+    // Читаем сырые байты и определяем кодировку сами:
+    // fs::read_to_string умеет только UTF-8, а старые русские
+    // .txt часто в Windows-1251.
+    let (text, encoding) = match fs::read(&path) {
+        Ok(bytes) => decode_bytes(&bytes),
+        Err(err) => {
+            show_error("Ошибка открытия", &err);
+            return;
+        }
+    };
+
+    let mut docs = docs.borrow_mut();
+    let current = ui.get_current_tab() as usize;
+    let opened = Document {
+        path: Some(path),
+        text,
+        dirty: false,
+        encoding,
+    };
+
+    let pristine =
+        docs[current].path.is_none() && docs[current].text.is_empty() && !docs[current].dirty;
+    let index = if pristine {
+        docs[current] = opened; // не плодим пустую вкладку
+        current
+    } else {
+        docs.push(opened);
+        docs.len() - 1
+    };
+    refresh_tabs(tabs, &docs);
+    show_doc(ui, &docs, index);
 }
 
 /// Превратить сырые байты файла в текст.
@@ -326,13 +390,13 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // «Файл → Открыть…»: в текущую вкладку, если она пустая, иначе в новую.
+    // «Файл → Открыть…»: в текущую вкладку, если она пустая, иначе в новую;
+    // уже открытый файл — переключение на его вкладку (логика в open_path).
     ui.on_open_file({
         let ui = ui.as_weak();
         let docs = docs.clone();
         let tabs = tabs_model.clone();
         move || {
-            let ui = ui.unwrap();
             let Some(path) = rfd::FileDialog::new()
                 .add_filter("Текстовые файлы", &["txt", "md", "rs", "toml"])
                 .add_filter("HTML", &["html", "htm"])
@@ -341,38 +405,7 @@ fn main() -> Result<(), slint::PlatformError> {
             else {
                 return; // пользователь отменил диалог
             };
-            // Читаем сырые байты и определяем кодировку сами:
-            // fs::read_to_string умеет только UTF-8, а старые русские
-            // .txt часто в Windows-1251.
-            let (text, encoding) = match fs::read(&path) {
-                Ok(bytes) => decode_bytes(&bytes),
-                Err(err) => {
-                    show_error("Ошибка открытия", &err);
-                    return;
-                }
-            };
-
-            let mut docs = docs.borrow_mut();
-            let current = ui.get_current_tab() as usize;
-            let opened = Document {
-                path: Some(path),
-                text,
-                dirty: false,
-                encoding,
-            };
-
-            let pristine = docs[current].path.is_none()
-                && docs[current].text.is_empty()
-                && !docs[current].dirty;
-            let index = if pristine {
-                docs[current] = opened; // не плодим пустую вкладку
-                current
-            } else {
-                docs.push(opened);
-                docs.len() - 1
-            };
-            refresh_tabs(&tabs, &docs);
-            show_doc(&ui, &docs, index);
+            open_path(&ui.unwrap(), &docs, &tabs, path);
         }
     });
 
@@ -600,6 +633,50 @@ fn main() -> Result<(), slint::PlatformError> {
             ))
             .show();
     });
+
+    // Перетаскивание файлов из проводника в окно. Slint пока не отдаёт
+    // это событие сам, поэтому перехватываем его у нижележащей библиотеки
+    // winit (нестабильное API за фичей unstable-winit-030 в Cargo.toml).
+    {
+        use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
+        ui.window().on_winit_window_event({
+            let ui = ui.as_weak();
+            let docs = docs.clone();
+            let tabs = tabs_model.clone();
+            move |_, event| {
+                // При перетаскивании нескольких файлов событие приходит
+                // на каждый по отдельности.
+                if let winit::event::WindowEvent::DroppedFile(path) = event {
+                    // Внутри этого обработчика работать нельзя: на Windows
+                    // событие приходит из вложенного системного цикла
+                    // сообщений (OLE drag-and-drop), и открытие файла прямо
+                    // здесь замораживает окно. Поэтому только откладываем
+                    // работу в очередь цикла событий Slint (таймер на 0 мс)
+                    // и сразу возвращаем управление системе.
+                    slint::Timer::single_shot(std::time::Duration::ZERO, {
+                        let ui = ui.clone();
+                        let docs = docs.clone();
+                        let tabs = tabs.clone();
+                        let path = path.clone();
+                        move || {
+                            if let Some(ui) = ui.upgrade() {
+                                open_path(&ui, &docs, &tabs, path);
+                            }
+                        }
+                    });
+                    return EventResult::PreventDefault;
+                }
+                EventResult::Propagate
+            }
+        });
+    }
+
+    // Файлы из аргументов командной строки: notepadm.exe файл.txt
+    // (в т.ч. «Открыть с помощью…» из проводника). args_os, а не args:
+    // args паникует на путях, которые не являются корректным Юникодом.
+    for arg in std::env::args_os().skip(1) {
+        open_path(&ui, &docs, &tabs_model, PathBuf::from(arg));
+    }
 
     ui.run()
 }

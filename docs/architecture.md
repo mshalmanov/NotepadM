@@ -66,7 +66,7 @@ property <[TabInfo]> tabs      ⇄    VecModel<TabInfo> (set_vec / set_row_data)
 property <int> current-tab     ⇄    индекс активного документа
 property <string> document-text ⇄   текст активного документа
 callback new-file()            →    добавить пустой Document, показать
-callback open-file()           →    rfd + fs::read + decode_bytes → в пустую или новую вкладку
+callback open-file()           →    rfd::FileDialog → open_path()
 callback save-file()           →    save_document(..., always_ask: false)
 callback save-file-as()        →    save_document(..., always_ask: true)
 callback preview-in-browser()  →    сохранённый файл или temp-копия → open::that()
@@ -79,6 +79,14 @@ callback find-next(...)        →    find_matches + invoke_highlight (выде�
 callback replace-one(...)      →    замена подсвеченного + find-next
 callback replace-all(...)      →    все вхождения одним проходом
 ```
+
+Все пути открытия файла сходятся в `open_path()`: диалог «Открыть…», аргументы
+командной строки (`notepadm.exe файл.txt`, в т.ч. «Открыть с помощью…»)
+и перетаскивание файла из проводника в окно. Уже открытый файл (сравнение
+канонических путей) — переключение на его вкладку; иначе `fs::read` +
+`decode_bytes` → в пустую или новую вкладку. Перетаскивание перехватывается
+у winit (`on_winit_window_event`, событие `DroppedFile`) — Slint своего события
+пока не даёт; включено фичей `unstable-winit-030` в Cargo.toml.
 
 Обратный канал «Rust → UI»: публичная функция `highlight(start, end)` в разметке
 (выделяет найденное в редакторе), вызывается как `ui.invoke_highlight(...)`.
