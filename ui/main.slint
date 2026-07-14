@@ -264,11 +264,15 @@ export component MainWindow inherits Window {
             }
 
             // Панель вкладок: по одному «ярлыку» на каждый элемент модели tabs.
+            // Без alignment: когда места мало, layout ужимает вкладки
+            // (заголовки обрезаются многоточием), а заполнитель в конце
+            // не даёт им растягиваться на всю ширину, пока места хватает.
             HorizontalLayout {
-                alignment: start;
                 height: 34px;
 
                 for tab[i] in root.tabs: Rectangle {
+                    horizontal-stretch: 0;
+                    max-width: 180px;
                     background: i == root.current-tab
                         ? Palette.background
                         : Palette.alternate-background;
@@ -290,6 +294,8 @@ export component MainWindow inherits Window {
                         Text {
                             text: tab.dirty ? tab.title + " *" : tab.title;
                             vertical-alignment: center;
+                            // elide: текст можно ужимать, лишнее заменяется «…»
+                            overflow: elide;
                             color: Palette.foreground;
                         }
 
@@ -298,15 +304,34 @@ export component MainWindow inherits Window {
                             close-area := TouchArea {
                                 clicked => { root.close-tab(i); }
                             }
-                            Text {
-                                text: "✕";
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
-                                color: close-area.has-hover ? #d03030 : Palette.foreground;
+                            // Фон-подсветка под курсором, как в браузерах.
+                            Rectangle {
+                                width: 16px;
+                                height: 16px;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 3px;
+                                background: close-area.has-hover ? #d0303028 : transparent;
+
+                                // Крестик рисуем векторно (Path), а не символом
+                                // шрифта: глифа «✕» может не быть в системном
+                                // шрифте, и он по-разному выглядит на разных ОС.
+                                Path {
+                                    width: 8px;
+                                    height: 8px;
+                                    x: (parent.width - self.width) / 2;
+                                    y: (parent.height - self.height) / 2;
+                                    commands: "M 0 0 L 8 8 M 8 0 L 0 8";
+                                    stroke: close-area.has-hover ? #d03030 : Palette.foreground;
+                                    stroke-width: 1.5px;
+                                }
                             }
                         }
                     }
                 }
+
+                // Заполнитель: забирает свободное место справа от вкладок.
+                Rectangle {}
             }
 
             editor := TextEdit {

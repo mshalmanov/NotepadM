@@ -1,6 +1,6 @@
 # Архитектура NotepadM (Rust-версия)
 
-> Актуальное состояние на 2026-07-10 (вечер: добавлены вкладки). Документ перезаписывается
+> Актуальное состояние на 2026-07-14. Документ перезаписывается
 > по мере развития проекта; история решений — в [dev-log.md](dev-log.md).
 
 ## Обзор
@@ -50,6 +50,8 @@ struct Document {
 Каждый документ — вкладка. UI получает производные данные: модель вкладок
 (`VecModel<TabInfo>`, где `TabInfo { title, dirty }` — общая структура, объявленная
 в `.slint`) и текст активного документа. Инвариант: всегда открыта хотя бы одна вкладка.
+Панель вкладок эластичная: ширина вкладки не больше 180px, при нехватке места
+вкладки ужимаются, заголовки обрезаются многоточием (`overflow: elide`).
 
 ## Поток данных: разметка ⇄ логика
 
@@ -63,7 +65,7 @@ property <[TabInfo]> tabs      ⇄    VecModel<TabInfo> (set_vec / set_row_data)
 property <int> current-tab     ⇄    индекс активного документа
 property <string> document-text ⇄   текст активного документа
 callback new-file()            →    добавить пустой Document, показать
-callback open-file()           →    rfd + fs::read_to_string → в пустую или новую вкладку
+callback open-file()           →    rfd + fs::read + decode_bytes → в пустую или новую вкладку
 callback save-file()           →    save_document(..., always_ask: false)
 callback save-file-as()        →    save_document(..., always_ask: true)
 callback preview-in-browser()  →    сохранённый файл или temp-копия → open::that()
