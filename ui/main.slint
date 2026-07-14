@@ -11,6 +11,39 @@ export struct TabInfo {
     dirty: bool,
 }
 
+// Кнопка-крестик (закрыть вкладку, спрятать панель поиска).
+// Крестик рисуем векторно (Path), а не символом шрифта: глифа «✕»
+// может не быть в системном шрифте (на Windows вместо него — квадратик),
+// и в разных шрифтах он выглядит по-разному.
+component CloseButton inherits Rectangle {
+    callback clicked;
+    width: 18px;
+
+    area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    // Фон-подсветка под курсором, как в браузерах.
+    Rectangle {
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 3px;
+        background: area.has-hover ? #d0303028 : transparent;
+
+        Path {
+            width: 8px;
+            height: 8px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            commands: "M 0 0 L 8 8 M 8 0 L 0 8";
+            stroke: area.has-hover ? #d03030 : Palette.foreground;
+            stroke-width: 1.5px;
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     title: root.tabs.length == 0
         ? "NotepadM"
@@ -236,8 +269,7 @@ export component MainWindow inherits Window {
                             text: root.search-status;
                             vertical-alignment: center;
                         }
-                        Button {
-                            text: "✕";
+                        CloseButton {
                             clicked => {
                                 root.search-visible = false;
                                 editor.focus();
@@ -299,33 +331,8 @@ export component MainWindow inherits Window {
                             color: Palette.foreground;
                         }
 
-                        Rectangle {
-                            width: 18px;
-                            close-area := TouchArea {
-                                clicked => { root.close-tab(i); }
-                            }
-                            // Фон-подсветка под курсором, как в браузерах.
-                            Rectangle {
-                                width: 16px;
-                                height: 16px;
-                                x: (parent.width - self.width) / 2;
-                                y: (parent.height - self.height) / 2;
-                                border-radius: 3px;
-                                background: close-area.has-hover ? #d0303028 : transparent;
-
-                                // Крестик рисуем векторно (Path), а не символом
-                                // шрифта: глифа «✕» может не быть в системном
-                                // шрифте, и он по-разному выглядит на разных ОС.
-                                Path {
-                                    width: 8px;
-                                    height: 8px;
-                                    x: (parent.width - self.width) / 2;
-                                    y: (parent.height - self.height) / 2;
-                                    commands: "M 0 0 L 8 8 M 8 0 L 0 8";
-                                    stroke: close-area.has-hover ? #d03030 : Palette.foreground;
-                                    stroke-width: 1.5px;
-                                }
-                            }
+                        CloseButton {
+                            clicked => { root.close-tab(i); }
                         }
                     }
                 }
