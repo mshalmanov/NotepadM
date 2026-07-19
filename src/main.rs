@@ -71,6 +71,39 @@ fn refresh_tabs(tabs: &VecModel<TabInfo>, docs: &[Document]) {
 fn show_doc(ui: &MainWindow, docs: &[Document], index: usize) {
     ui.set_current_tab(index as i32);
     ui.set_document_text(docs[index].text.as_str().into());
+    // Строка состояния целиком описывает активный документ — обновляем всю.
+    ui.set_status_encoding(docs[index].encoding.name().into());
+    update_size_status(ui, &docs[index].text);
+    update_caret_status(ui, ui.get_editor_cursor() as usize);
+}
+
+/// Строка и столбец курсора (нумерация с 1) по байтовому смещению в тексте.
+/// Смещение может прийти из UI «сырым»: больше длины текста (текст только что
+/// сменили) или посреди многобайтового символа — прижимаем его к ближайшей
+/// допустимой границе слева.
+fn caret_position(text: &str, byte_offset: usize) -> (usize, usize) {
+    let mut offset = byte_offset.min(text.len());
+    while !text.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    let before = &text[..offset];
+    let line = before.matches('\n').count() + 1;
+    let line_start = before.rfind('\n').map_or(0, |pos| pos + 1);
+    // Столбец — в символах, не в байтах: «привет» — 6 столбцов, не 12.
+    let column = before[line_start..].chars().count() + 1;
+    (line, column)
+}
+
+/// Обновить в строке состояния позицию курсора.
+fn update_caret_status(ui: &MainWindow, byte_offset: usize) {
+    let text = ui.get_document_text();
+    let (line, column) = caret_position(text.as_str(), byte_offset);
+    ui.set_status_caret(format!("Стр {line}, стлб {column}").into());
+}
+
+/// Обновить в строке состояния размер текста.
+fn update_size_status(ui: &MainWindow, text: &str) {
+    ui.set_status_size(format!("Символов: {}", text.chars().count()).into());
 }
 
 /// Списать текст активного документа из UI в модель.
@@ -317,7 +350,8 @@ fn main() -> Result<(), slint::PlatformError> {
 
     refresh_tabs(&tabs_model, &docs.borrow());
     ui.set_tabs(ModelRc::from(tabs_model.clone()));
-    ui.set_current_tab(0);
+    // show_doc, а не просто set_current_tab: заполняет и строку состояния.
+    show_doc(&ui, &docs.borrow(), 0);
 
     // «Файл → Новый»: добавить пустую вкладку и переключиться на неё.
     ui.on_new_file({
@@ -357,8 +391,10 @@ fn main() -> Result<(), slint::PlatformError> {
         let ui = ui.as_weak();
         let docs = docs.clone();
         let tabs = tabs_model.clone();
-        move |_text| {
+        move |text| {
             let ui = ui.unwrap();
+            // Пересчёт длины — это проход по тексту, но без копий и аллокаций.
+            update_size_status(&ui, text.as_str());
             let index = ui.get_current_tab() as usize;
             let mut docs = docs.borrow_mut();
             let doc = &mut docs[index];
@@ -366,6 +402,14 @@ fn main() -> Result<(), slint::PlatformError> {
                 doc.dirty = true;
                 tabs.set_row_data(index, doc.tab_info());
             }
+        }
+    });
+
+    // Движение курсора в редакторе: пересчитать «Стр N, стлб M».
+    ui.on_cursor_moved({
+        let ui = ui.as_weak();
+        move |offset| {
+            update_caret_status(&ui.unwrap(), offset as usize);
         }
     });
 
@@ -477,6 +521,7 @@ fn main() -> Result<(), slint::PlatformError> {
         docs[index].dirty = true;
         ui.set_document_text(docs[index].text.as_str().into());
         tabs.set_row_data(index, docs[index].tab_info());
+        update_size_status(ui, &docs[index].text);
     }
 
     // «Найти далее»: следующее вхождение от текущей позиции, с переходом
@@ -761,6 +806,41 @@ mod tests {
     #[test]
     fn absent_needle_finds_nothing() {
         assert!(find_matches("abc", "z", false).is_empty());
+    }
+
+    // ---------- caret_position ----------
+
+    #[test]
+    fn caret_at_start_is_line_1_column_1() {
+        assert_eq!(caret_position("abc", 0), (1, 1));
+    }
+
+    #[test]
+    fn caret_counts_lines_and_columns() {
+        // "ab\ncdef", смещение 6 — перед 'f': вторая строка, четвёртый столбец.
+        assert_eq!(caret_position("ab\ncdef", 6), (2, 4));
+    }
+
+    #[test]
+    fn caret_right_after_newline_is_start_of_next_line() {
+        assert_eq!(caret_position("ab\n", 3), (2, 1));
+    }
+
+    #[test]
+    fn caret_column_counts_chars_not_bytes() {
+        // Кириллица — 2 байта на букву: конец «привет» — столбец 7, а не 13.
+        assert_eq!(caret_position("привет", 12), (1, 7));
+    }
+
+    #[test]
+    fn caret_inside_multibyte_char_snaps_left() {
+        // Смещение 3 — середина «р» (байты 2..4): прижимается к её началу.
+        assert_eq!(caret_position("привет", 3), (1, 2));
+    }
+
+    #[test]
+    fn caret_offset_beyond_text_clamps_to_end() {
+        assert_eq!(caret_position("ab", 100), (1, 3));
     }
 
     // ---------- decode_bytes ----------

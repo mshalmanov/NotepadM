@@ -2,7 +2,7 @@
 // Концептуальный аналог MainForm.fxml из JavaFX-версии:
 // декларативное описание интерфейса, отделённое от логики (src/main.rs).
 
-import { TextEdit, LineEdit, Button, CheckBox, Palette } from "std-widgets.slint";
+import { LineEdit, Button, CheckBox, Palette, ScrollView } from "std-widgets.slint";
 
 // Структура «инфо о вкладке» — общая для разметки и Rust-кода:
 // компилятор Slint сгенерирует одноимённый Rust-тип TabInfo.
@@ -44,6 +44,97 @@ component CloseButton inherits Rectangle {
     }
 }
 
+// Редактор — свой компонент вместо стандартного TextEdit из std-widgets.
+// Причина: TextEdit не отдаёт наружу позицию курсора, а строке состояния
+// она нужна. Устройство повторяет внутренний TextEditBase самого Slint:
+// низкоуровневый элемент TextInput внутри ScrollView.
+component Editor inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    // Позиция курсора: байтовое смещение (UTF-8) от начала текста.
+    out property <int> cursor-offset: input.cursor-position-byte-offset;
+
+    callback edited(text: string);
+    callback cursor-moved(offset: int);
+
+    background: Palette.control-background;
+    horizontal-stretch: 1;
+    vertical-stretch: 1;
+    forward-focus: input;
+
+    public function set-selection-offsets(start: int, end: int) {
+        input.set-selection-offsets(start, end);
+    }
+
+    public function cut() { input.cut(); }
+    public function copy() { input.copy(); }
+    public function paste() { input.paste(); }
+
+    // Контекстное меню правой кнопки — у TextEdit оно было встроенным,
+    // здесь объявляем своё (заодно с русскими надписями).
+    ContextMenuArea {
+        Menu {
+            MenuItem {
+                title: "Вырезать";
+                activated => { input.cut(); }
+            }
+            MenuItem {
+                title: "Копировать";
+                activated => { input.copy(); }
+            }
+            MenuItem {
+                title: "Вставить";
+                activated => { input.paste(); }
+            }
+            MenuItem {
+                title: "Выделить всё";
+                activated => { input.select-all(); }
+            }
+        }
+
+        scroll := ScrollView {
+            x: 8px;
+            y: 8px;
+            width: parent.width - 16px;
+            height: parent.height - 16px;
+            viewport-width: self.visible-width;
+            viewport-height: max(self.visible-height, input.preferred-height);
+
+            input := TextInput {
+                enabled: true;
+                single-line: false;
+                wrap: word-wrap;
+                color: Palette.foreground;
+                selection-background-color: Palette.selection-background;
+                selection-foreground-color: Palette.selection-foreground;
+                page-height: scroll.visible-height;
+
+                edited => { root.edited(self.text); }
+
+                // Срабатывает при любом изменении свойства (change callback).
+                changed cursor-position-byte-offset => {
+                    root.cursor-moved(self.cursor-position-byte-offset);
+                }
+
+                // TextInput сам не прокручивается вслед за курсором — это
+                // обязанность обёртки. Логика (включая запас 20px на высоту
+                // строки) взята из TextEditBase Slint.
+                cursor-position-changed(cpos) => {
+                    if (cpos.x + scroll.viewport-x < 0px) {
+                        scroll.viewport-x = min(0px, max(scroll.visible-width - self.width, -cpos.x));
+                    } else if (cpos.x + scroll.viewport-x > scroll.visible-width) {
+                        scroll.viewport-x = min(0px, max(scroll.visible-width - self.width, scroll.visible-width - cpos.x));
+                    }
+                    if (cpos.y + scroll.viewport-y < 0px) {
+                        scroll.viewport-y = min(0px, scroll.visible-height - cpos.y - 20px, max(scroll.visible-height - self.height, -cpos.y));
+                    } else if (cpos.y + scroll.viewport-y > scroll.visible-height - 20px) {
+                        scroll.viewport-y = min(0px, max(scroll.visible-height - self.height, scroll.visible-height - cpos.y - 20px));
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     title: root.tabs.length == 0
         ? "NotepadM"
@@ -68,6 +159,13 @@ export component MainWindow inherits Window {
     // Панель поиска: видимость и строка статуса («3/17», «Не найдено»…).
     in-out property <bool> search-visible: false;
     in-out property <string> search-status;
+    // Строка состояния: позиция курсора, размер текста, кодировка.
+    // Тексты готовит Rust — разметка их только показывает.
+    in-out property <string> status-caret;
+    in-out property <string> status-size;
+    in-out property <string> status-encoding;
+    // Позиция курсора редактора — для чтения из Rust-кода.
+    out property <int> editor-cursor: editor.cursor-offset;
 
     // Callbacks — «сигналы» в сторону Rust-кода.
     callback new-file();
@@ -80,6 +178,7 @@ export component MainWindow inherits Window {
     callback select-tab(int);
     callback close-tab(int);
     callback text-edited(string);
+    callback cursor-moved(int);
     // Поиск/замена: (что искать, [на что менять,] учитывать регистр).
     callback find-next(string, bool);
     callback replace-one(string, string, bool);
@@ -341,12 +440,32 @@ export component MainWindow inherits Window {
                 Rectangle {}
             }
 
-            editor := TextEdit {
+            editor := Editor {
                 text <=> root.document-text;
-                wrap: word-wrap;
                 // Срабатывает только на ввод пользователя,
                 // не на программное изменение text из Rust.
                 edited(text) => { root.text-edited(text); }
+                cursor-moved(offset) => { root.cursor-moved(offset); }
+            }
+
+            // Строка состояния.
+            Rectangle {
+                background: Palette.alternate-background;
+                height: status-bar.preferred-height;
+
+                status-bar := HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    spacing: 24px;
+
+                    Text { text: root.status-caret; }
+                    Text { text: root.status-size; }
+                    // Распорка: кодировка прижимается к правому краю.
+                    Rectangle {}
+                    Text { text: root.status-encoding; }
+                }
             }
         }
     }
