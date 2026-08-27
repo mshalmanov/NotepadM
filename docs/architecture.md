@@ -23,6 +23,7 @@ NotepadM — учебный десктопный текстовый редакт
 |---|---|---|
 | Java (JDK) | 21 | Язык и рантайм |
 | JavaFX | 19 (`javafx-controls`, `javafx-fxml`) | UI-фреймворк |
+| RichTextFX | 0.11.7 (`richtextfx`) | Редактор кода (`CodeArea`) с подсветкой синтаксиса; тянет транзитивно `flowless` (виртуализированная прокрутка), `reactfx` (реактивные подписки на изменения текста), `undofx`, `wellbehavedfx` |
 | Maven | 3.9.x | Сборка, управление зависимостями |
 | `maven-compiler-plugin` | 3.13.0 | Компиляция под `source`/`target` 21 |
 | `javafx-maven-plugin` | 0.0.8 | Запуск (`mvn javafx:run`) в dev-режиме |
@@ -55,9 +56,11 @@ NotepadM/
 ├── src/main/java/ru/filive/
 │   ├── Launcher.java              # Точка входа для fat-jar (см. п.5)
 │   ├── MainForm.java              # javafx.application.Application, точка входа для dev-режима
-│   └── MainFormController.java    # Контроллер FXML, вся UI-логика
+│   ├── MainFormController.java    # Контроллер FXML, вся UI-логика
+│   └── JavaSyntaxHighlighter.java # Подсветка синтаксиса Java для CodeArea (regex + StyleSpans)
 ├── src/main/resources/
 │   ├── MainForm.fxml              # Разметка главного окна (меню, тулбар, TabPane)
+│   ├── css/java-keywords.css      # Стили подсветки синтаксиса (регистрируется на Scene)
 │   └── images/                    # Иконки меню/тулбара (PNG) + NotepadM.ICO/PNG
 ├── pom.xml                        # Единственный модуль сборки
 ├── COPYING.txt / LICENSE          # GNU GPL v2+
@@ -148,23 +151,62 @@ public class Launcher {
 
 ## 7. Модель данных редактора (текущее состояние)
 
-Сейчас у проекта **нет отдельной модели документа** — каждая вкладка
-(`Tab`) хранит содержимое напрямую в `TextArea.getContent()`, без обёртки
-над файлом (путь, флаг "изменено", кодировка). Это ограничивает то, что
-можно сделать с Open/Save (см. `docs/todo.md`, пункты 1–3): как только эти
-функции будут реализованы, потребуется как минимум лёгкая модель, например:
+Редактируемый виджет вкладки — `org.fxmisc.richtext.CodeArea` (RichTextFX),
+а не обычный `javafx.scene.control.TextArea`: он умеет построчную стилизацию
+текста (`setStyleSpans`), что и используется для подсветки синтаксиса (см.
+раздел 8.1). `CodeArea` для производительной виртуализированной прокрутки
+оборачивается в `org.fxmisc.flowless.VirtualizedScrollPane<CodeArea>`, и
+именно эта обёртка кладётся как `tab.setContent(...)` — то есть
+`tab.getContent()` возвращает `VirtualizedScrollPane`, а не сам `CodeArea`
+напрямую. Поэтому ссылка на `CodeArea` текущей вкладки хранится отдельно —
+через `tab.setUserData(codeArea)` — и извлекается методом
+`getCurrentCodeArea()` в `MainFormController` через
+`tab.getUserData() instanceof CodeArea`.
+
+У проекта по-прежнему **нет отдельной модели документа** — нет обёртки над
+файлом (путь, флаг "изменено", кодировка), только сам `CodeArea` с текстом.
+Это ограничивает то, что можно сделать с Open/Save (см. `docs/todo.md`,
+пункты 1–3): как только эти функции будут реализованы, потребуется как
+минимум лёгкая модель, например:
 
 ```java
 class Document {
-    Path filePath;       // null для несохранённого файла
-    TextArea textArea;   // UI-компонент с текстом
+    Path filePath;        // null для несохранённого файла
+    CodeArea codeArea;     // UI-компонент с текстом
     BooleanProperty dirty;
 }
 ```
 
 и хранение `Map<Tab, Document>` (или кастомный `Tab`-сабкласс) в
-`MainFormController`, вместо приведения `tab.getContent()` к `TextArea`
-через `instanceof` (текущий метод `getCurrentTextArea()`).
+`MainFormController` вместо текущего одиночного `tab.setUserData(codeArea)`.
+
+### 7.1 Механизм подсветки синтаксиса (только Java)
+
+- `ru.filive.JavaSyntaxHighlighter` — единственный класс, отвечающий за
+  подсветку. Содержит скомпилированный `Pattern` с именованными группами
+  (`KEYWORD`, `PAREN`, `BRACE`, `BRACKET`, `SEMICOLON`, `STRING`, `COMMENT`)
+  и статический метод `computeHighlighting(String text)`, возвращающий
+  `StyleSpans<Collection<String>>` — RichTextFX сопоставляет каждому спану
+  CSS-класс (`.keyword`, `.string`, ...).
+- В `MainFormController.onNewAction()` при создании `CodeArea` подписка
+  `codeArea.multiPlainChanges().successionEnds(Duration.ofMillis(500)).subscribe(...)`
+  пересчитывает подсветку через 500 мс после того, как пользователь
+  перестал печатать (debounce, чтобы не гонять regex на каждое нажатие
+  клавиши). Подписка **не отписывается** при закрытии вкладки — в проекте
+  пока нет логики закрытия вкладок вообще, см. `docs/todo.md`, п.24.
+- Номера строк — `codeArea.setParagraphGraphicFactory(LineNumberFactory.get(codeArea))`,
+  готовая фабрика из RichTextFX.
+- Цвета — `src/main/resources/css/java-keywords.css`, зарегистрирован один
+  раз на уровне `Scene` в `MainForm.java`
+  (`scene.getStylesheets().add(...)`) — CSS каскадно применяется ко всем
+  вкладкам/`CodeArea`, создаваемым позже, регистрировать стиль на каждом
+  `CodeArea` отдельно не нужно.
+- Подсветка жёстко привязана к Java — нет определения языка по расширению
+  файла (Open ещё не реализован) и нет абстракции "highlighter на язык".
+  Если/когда появится многоязычная поддержка, `JavaSyntaxHighlighter` стоит
+  оставить как есть и добавить рядом реализации для других языков за общим
+  интерфейсом — не переусложнять сейчас ради гипотетического будущего (см.
+  `docs/todo.md`, п.23).
 
 ## 8. Сборочный пайплайн (`pom.xml`)
 
@@ -229,11 +271,14 @@ class Document {
 
 ## 11. Известные архитектурные ограничения
 
-- **Нет rich-text.** `TextArea` — компонент только для plain text.
-  Кнопки Bold/Italic/Underline в тулбаре сейчас ничего не делают и не
-  *могут* ничего сделать без замены компонента редактирования (см.
-  `docs/todo.md`, п.18). Любая попытка "доделать" эти кнопки в текущей
-  архитектуре без замены `TextArea` будет тупиковой.
+- **Нет rich-text.** `CodeArea` (RichTextFX) — стилизуемый *plain-text*
+  редактор: стили (`StyleSpans`) применяются программно по regex ко всему
+  тексту, а не выбираются пользователем для произвольного диапазона. Этого
+  достаточно для подсветки синтаксиса (см. раздел 7.1), но недостаточно для
+  WYSIWYG-форматирования. Кнопки Bold/Italic/Underline в тулбаре по-прежнему
+  ничего не делают и не *могут* ничего сделать без отдельного rich-text
+  компонента (`HTMLEditor` или кастомный редактор) — см. `docs/todo.md`,
+  п.18.
 - **Нет модели документа** — см. раздел 7. Реализация Open/Save потребует
   минимум `Path` + dirty-флаг на вкладку.
 - **Логирование через `System.out.println`** — приемлемо для текущего
