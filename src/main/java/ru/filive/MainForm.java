@@ -24,6 +24,7 @@ public class MainForm extends Application
     {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/MainForm.fxml"));
         AnchorPane root = loader.load();
+        MainFormController controller = loader.getController();
         Scene scene = new Scene(root, 800, 600);
         scene.getStylesheets().add(getClass().getResource("/css/java-keywords.css").toExternalForm());
 
@@ -33,9 +34,17 @@ public class MainForm extends Application
         );
         primaryStage.setMinWidth(800);
         primaryStage.setMinHeight(600);
-        //frmMain.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); //exit from close app
+        primaryStage.setOnCloseRequest(closeEvent -> {
+            if (!controller.canClose())
+            {
+                closeEvent.consume();
+            }
+        });
         primaryStage.setScene(scene);
         primaryStage.show();
+
+        // ни один файл не открыт при старте — создаём пустой документ по умолчанию
+        controller.newTab();
     }   
 
     public static void main(String[] args)

@@ -8,7 +8,7 @@
 <AnchorPane xmlns:fx="http://javafx.com/fxml/1" fx:controller="ru.filive.MainFormController">
     <MenuBar AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0">
         <Menu text="File">
-            <MenuItem fx:id="newMenuItem" text="Open" onAction="#onNewAction">
+            <MenuItem fx:id="newMenuItem" text="New" onAction="#onNewAction">
                 <graphic>
                     <ImageView fitHeight="16" fitWidth="16">
                         <image>

@@ -158,27 +158,33 @@ public class Launcher {
 оборачивается в `org.fxmisc.flowless.VirtualizedScrollPane<CodeArea>`, и
 именно эта обёртка кладётся как `tab.setContent(...)` — то есть
 `tab.getContent()` возвращает `VirtualizedScrollPane`, а не сам `CodeArea`
-напрямую. Поэтому ссылка на `CodeArea` текущей вкладки хранится отдельно —
-через `tab.setUserData(codeArea)` — и извлекается методом
-`getCurrentCodeArea()` в `MainFormController` через
-`tab.getUserData() instanceof CodeArea`.
+напрямую.
 
-У проекта по-прежнему **нет отдельной модели документа** — нет обёртки над
-файлом (путь, флаг "изменено", кодировка), только сам `CodeArea` с текстом.
-Это ограничивает то, что можно сделать с Open/Save (см. `docs/todo.md`,
-пункты 1–3): как только эти функции будут реализованы, потребуется как
-минимум лёгкая модель, например:
+С реализацией Open/Save (`docs/steps.md`, запись №11) появилась лёгкая
+модель документа — приватный статический класс
+`MainFormController.TabContent`:
 
 ```java
-class Document {
-    Path filePath;        // null для несохранённого файла
-    CodeArea codeArea;     // UI-компонент с текстом
-    BooleanProperty dirty;
+private static class TabContent {
+    final CodeArea codeArea;
+    File file;      // null, пока вкладка не привязана к файлу на диске
+    boolean dirty;  // true после первого изменения текста пользователем
 }
 ```
 
-и хранение `Map<Tab, Document>` (или кастомный `Tab`-сабкласс) в
-`MainFormController` вместо текущего одиночного `tab.setUserData(codeArea)`.
+Экземпляр кладётся как `tab.setUserData(tabContent)` (вместо голого
+`CodeArea`, как было раньше) и извлекается через
+`getCurrentTabContent()`/`getCurrentCodeArea()` в `MainFormController` по
+шаблону `tab.getUserData() instanceof TabContent`. `dirty` выставляется в
+`true` подпиской `codeArea.plainTextChanges().subscribe(...)`, оформленной
+**после** начальной загрузки текста в `createTab(...)`, чтобы сама загрузка
+не считалась правкой пользователя; сбрасывается в `false` при успешном
+сохранении (`saveTab(...)`). Используется диалогом подтверждения закрытия
+(Save/Don't Save/Cancel) — см. раздел 7.1 и `docs/todo.md`, п.7.
+
+`Files`/`Path` (кодировка, режимы записи) в модель пока не выносились —
+чтение/запись делаются напрямую через `java.nio.file.Files.readString`/
+`writeString` в местах вызова (`onOpenAction`, `saveTab`).
 
 ### 7.1 Механизм подсветки синтаксиса (только Java)
 
@@ -188,12 +194,14 @@ class Document {
   и статический метод `computeHighlighting(String text)`, возвращающий
   `StyleSpans<Collection<String>>` — RichTextFX сопоставляет каждому спану
   CSS-класс (`.keyword`, `.string`, ...).
-- В `MainFormController.onNewAction()` при создании `CodeArea` подписка
+- В `MainFormController.createTab(...)` при создании `CodeArea` подписка
   `codeArea.multiPlainChanges().successionEnds(Duration.ofMillis(500)).subscribe(...)`
   пересчитывает подсветку через 500 мс после того, как пользователь
   перестал печатать (debounce, чтобы не гонять regex на каждое нажатие
-  клавиши). Подписка **не отписывается** при закрытии вкладки — в проекте
-  пока нет логики закрытия вкладок вообще, см. `docs/todo.md`, п.24.
+  клавиши). Подписка **не отписывается** при закрытии вкладки — теперь, когда
+  вкладки штатно закрываются (`Tab.setOnCloseRequest`, см. раздел 7), это
+  реальная (хоть и небольшая) утечка, а не гипотетическая, см. `docs/todo.md`,
+  п.24.
 - Номера строк — `codeArea.setParagraphGraphicFactory(LineNumberFactory.get(codeArea))`,
   готовая фабрика из RichTextFX.
 - Цвета — `src/main/resources/css/java-keywords.css`, зарегистрирован один
