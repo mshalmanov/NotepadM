@@ -5,15 +5,20 @@ package ru.filive;
  * @author Marat Shalmanov
  */
 
+import java.time.Duration;
+
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Alert;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
-import javafx.scene.control.TextArea;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+
+import org.fxmisc.flowless.VirtualizedScrollPane;
+import org.fxmisc.richtext.CodeArea;
+import org.fxmisc.richtext.LineNumberFactory;
 
 public class MainFormController 
 {
@@ -41,25 +46,33 @@ public class MainFormController
     @FXML
     private MenuItem pasteMenuItem;
     
-    // --- get TextArea for the current tab (if tab exists)
-    private TextArea getCurrentTextArea()
+    // --- get CodeArea for the current tab (if tab exists)
+    private CodeArea getCurrentCodeArea()
     {
         Tab tab = tabPane.getSelectionModel().getSelectedItem();
-        if (tab != null && tab.getContent() instanceof TextArea)
+        if (tab != null && tab.getUserData() instanceof CodeArea)
         {
-            return (TextArea) tab.getContent();
+            return (CodeArea) tab.getUserData();
         }
         return null;
     }
-    
+
     @FXML
     private void onNewAction(ActionEvent event)
     {
-        TextArea textArea = new TextArea();
+        CodeArea codeArea = new CodeArea();
+        codeArea.setParagraphGraphicFactory(LineNumberFactory.get(codeArea));
+        codeArea.multiPlainChanges()
+                .successionEnds(Duration.ofMillis(500))
+                .subscribe(ignore -> codeArea.setStyleSpans(
+                        0, JavaSyntaxHighlighter.computeHighlighting(codeArea.getText())));
+
         Tab tab = new Tab("New File");
-        tab.setContent(textArea);
+        tab.setContent(new VirtualizedScrollPane<>(codeArea));
+        tab.setUserData(codeArea);
         tabPane.getTabs().add(tab);
         tabPane.getSelectionModel().select(tab);
+        codeArea.requestFocus();
     }
     
     @FXML
@@ -94,14 +107,14 @@ public class MainFormController
     @FXML
     private void onCopyAction(ActionEvent event)
     {
-        TextArea currentTextArea = getCurrentTextArea();
+        CodeArea currentCodeArea = getCurrentCodeArea();
 
-        // Проверка, что текущая вкладка содержит TextArea и текст выбран
-        if (currentTextArea != null && !currentTextArea.getSelectedText().isEmpty())
+        // Проверка, что текущая вкладка содержит CodeArea и текст выбран
+        if (currentCodeArea != null && !currentCodeArea.getSelectedText().isEmpty())
         {
             Clipboard clipboard = Clipboard.getSystemClipboard();
             ClipboardContent content = new ClipboardContent();
-            content.putString(currentTextArea.getSelectedText());  // Копирование выделенного текста
+            content.putString(currentCodeArea.getSelectedText());  // Копирование выделенного текста
             clipboard.setContent(content);
         } else {
             // Если текст не выбран, можно уведомить пользователя

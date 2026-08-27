@@ -25,7 +25,8 @@ public class MainForm extends Application
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/MainForm.fxml"));
         AnchorPane root = loader.load();
         Scene scene = new Scene(root, 800, 600);
-        
+        scene.getStylesheets().add(getClass().getResource("/css/java-keywords.css").toExternalForm());
+
         primaryStage.setTitle("Notepad");
         primaryStage.getIcons().add(
             new Image(getClass().getResourceAsStream("/images/NotepadM.png"))
