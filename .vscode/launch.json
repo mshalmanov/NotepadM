@@ -5,7 +5,7 @@
             "type": "java",
             "name": "NotepadM (JavaFX)",
             "request": "launch",
-            "mainClass": "ru.filive.MainForm",
+            "mainClass": "ru.filive.Launcher",
             "projectName": "NotepadM"
         }
     ]

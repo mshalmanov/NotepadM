@@ -366,3 +366,38 @@ RichTextFX не регистрирует изменение как отменя�
 рассмотрен, но осознанно не применён).
 
 **Дата:** 2026-08-28
+
+---
+
+### 14. Фикс запуска/отладки из VS Code (breakpoints не работали)
+
+**Описание:** По запросу пользователя починен запуск и отладка через
+точки останова в VS Code. `.vscode/launch.json` указывал `mainClass:
+"ru.filive.MainForm"` — класс, наследующийся напрямую от
+`javafx.application.Application`. JDK-лаунчер отказывается запускать
+напрямую указанный main-class, если он наследуется от `Application`, а
+`javafx.graphics` не на module-path (в проекте нет `module-info.java`, всё
+на classpath) — падает с `Error: JavaFX runtime components are missing...`.
+Именно из-за этого в проекте уже существует `ru.filive.Launcher` (раздел 5
+`docs/architecture.md`), но раньше он был подключён только для fat-jar
+(`maven-shade-plugin`), а не для VS Code.
+
+Гипотеза проверена эмпирически перед правкой (не наугад): собран classpath
+через `mvn dependency:build-classpath` (тот же способ, каким Java-расширение
+VS Code резолвит зависимости), запущено `java -cp "target/classes;<deps>"
+ru.filive.MainForm` — воспроизведена именно ошибка "JavaFX runtime
+components are missing"; тот же classpath с `ru.filive.Launcher` вместо
+`MainForm` запустился без ошибок (реальное окно открылось).
+
+**Изменение:** `.vscode/launch.json` — `mainClass` изменён с
+`"ru.filive.MainForm"` на `"ru.filive.Launcher"`. Точки останова в любом
+классе проекта (`MainFormController`, `MainForm` и т.д.) работают как
+обычно после старта — ограничение JDK касается только явно запрошенного
+main-class при старте JVM, а не того, что происходит после.
+
+Документация обновлена: `docs/todo.md` (строка "VS Code запуск/отладка" —
+уточнён `mainClass`), `docs/architecture.md` (раздел 5 переписан — точнее
+объяснена природа ограничения JDK, не только для shade-plugin; добавлен
+VS Code как третье место, где нужен именно `Launcher`).
+
+**Дата:** 2026-08-28

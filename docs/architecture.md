@@ -103,15 +103,29 @@ NotepadM/
 
 ## 5. Зачем нужен `Launcher.java`
 
-`javafx.application.Application` требует, чтобы класс-точка-входа **не**
-наследовался напрямую от `Application`, когда приложение запускается из
-"толстого" (fat/shaded) jar через `java -jar app.jar`, — иначе JavaFX
-Launcher не может корректно определить модуль приложения после того, как
-`maven-shade-plugin` объединил все классы и ресурсы (включая
-`module-info.class` из зависимостей JavaFX) в один jar. Это известная
-проблема связки shade-plugin + JavaFX.
+Сам JDK-лаунчер (`java`, начиная с версии, где JavaFX вынесен из JDK)
+отказывается запускать класс, который **напрямую** указан как main-class,
+если этот класс наследуется от `javafx.application.Application`, а
+`javafx.graphics` не найден на **module-path** (JavaFX на classpath не
+считается). При нарушении этого правила процесс падает с
 
-Решение — отдельный класс без наследования от `Application`:
+```
+Error: JavaFX runtime components are missing, and are required to run this application
+```
+
+В проекте нет `module-info.java` (раздел 2) — весь код и JavaFX работают на
+classpath, поэтому это ограничение бьёт по **любому** способу запуска, где
+main-class = `ru.filive.MainForm` напрямую: `java -jar app.jar` с таким
+`Main-Class` в манифесте, `java -cp ... ru.filive.MainForm` без jar вообще
+(проверено эмпирически при отладке VS Code launch-конфигурации, см.
+`docs/steps.md`, запись №14) — и, скорее всего, отладочный запуск из
+VS Code/IntelliJ, если их Java-расширение не делает специальной
+JavaFX-обработки. Ограничение проверяется только по **явно запрошенному**
+main-class — если запущен другой класс, который уже *внутри себя* вызывает
+`Application.launch(...)`, проверка не срабатывает.
+
+Решение — отдельный класс без наследования от `Application`, который сам
+вызывает `MainForm.main(...)`:
 
 ```java
 public class Launcher {
@@ -121,12 +135,21 @@ public class Launcher {
 }
 ```
 
-`maven-shade-plugin` настроен через `ManifestResourceTransformer` указывать
-`Main-Class: ru.filive.Launcher` в манифесте fat-jar (см. `pom.xml`,
-секция `maven-shade-plugin`), в то время как `javafx-maven-plugin`
-(используется для `mvn javafx:run` в разработке) указывает напрямую
-`ru.filive.MainForm`. **Если добавляете новый способ упаковки/запуска —
-не забывайте, какой main-class ему нужен.**
+Три места, где нужно указывать именно `ru.filive.Launcher`, а не
+`ru.filive.MainForm`, как main-class:
+- `maven-shade-plugin` — через `ManifestResourceTransformer` прописывает
+  `Main-Class: ru.filive.Launcher` в манифесте fat-jar (см. `pom.xml`);
+- `.vscode/launch.json` — `mainClass: "ru.filive.Launcher"` (запуск/отладка
+  из VS Code, включая точки останова);
+- `javafx-maven-plugin` (используется только для `mvn javafx:run` в
+  разработке) — исключение: он сам добавляет `--module-path`/
+  `--add-modules`, поэтому единственный указывает напрямую
+  `ru.filive.MainForm` в своей конфигурации в `pom.xml`.
+
+**Если добавляете новый способ упаковки/запуска (ещё одна IDE, скрипт,
+Docker-образ и т.п.) — не забывайте: если он не добавляет
+`--module-path`/`--add-modules` сам, main-class должен быть
+`ru.filive.Launcher`.**
 
 ## 6. Связка FXML ↔ Controller
 

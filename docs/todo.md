@@ -32,7 +32,7 @@
 | Сборка в fat-jar (`maven-shade-plugin`) | ✅ | `ru.filive.Launcher` как main-class шейдед-jar-а |
 | Сборка в `.exe` (`launch4j-maven-plugin`) | ✅ | `target/NotepadM.exe`, требует JRE ≥ 21 на машине пользователя |
 | CI (GitHub Actions) | ✅ | Сборка на push в `dev`/`master` и PR в `master`, публикует jar и exe как артефакты. Кэш Maven-зависимостей, `concurrency` (отмена устаревших прогонов), `timeout-minutes: 20`, batch-режим `mvn -B`, путь к jar-артефакту — glob `NotepadM-*.jar` вместо захардкоженной версии |
-| VS Code запуск/отладка | ✅ | `.vscode/launch.json`, `extensions.json`, `settings.json` |
+| VS Code запуск/отладка | ✅ | `.vscode/launch.json` (`mainClass: ru.filive.Launcher`, не `MainForm` — см. раздел 5 `docs/architecture.md`), `extensions.json`, `settings.json` |
 | Юнит-тесты | ❌ | Тестов нет вообще (`mvn test` → "No tests to run") |
 
 ## Что нужно добавить (по приоритету)
