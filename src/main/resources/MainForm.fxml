@@ -85,7 +85,7 @@
     <ToolBar AnchorPane.topAnchor="25" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0">
         <Button fx:id="newButton" onAction="#onNewAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="newIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/New.png" />
                     </image>
@@ -103,7 +103,7 @@
         </Button>
         <Button fx:id="saveButton" onAction="#onSaveAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="saveIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Save.png" />
                     </image>
@@ -112,7 +112,7 @@
         </Button>
         <Button fx:id="cutButton" onAction="#onCutAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="cutIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Cut.png" />
                     </image>
@@ -121,7 +121,7 @@
         </Button>
         <Button fx:id="copyButton" onAction="#onCopyAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="copyIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Copy.png" />
                     </image>
@@ -130,7 +130,7 @@
         </Button>
         <Button fx:id="pastButton" onAction="#onPasteAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="pasteIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Paste.png" />
                     </image>
@@ -139,7 +139,7 @@
         </Button>
         <Button fx:id="Text_boldButton" onAction="#onBoldAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="boldIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Text_bold.png" />
                     </image>
@@ -148,7 +148,7 @@
         </Button>
         <Button fx:id="Text_italicsButton" onAction="#onItalicAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="italicsIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Text_italics.png" />
                     </image>
@@ -157,7 +157,7 @@
         </Button>
         <Button fx:id="Text_underlineButton" onAction="#onUnderlineAction">
             <graphic>
-                <ImageView fx:id="openIcon" fitHeight="16" fitWidth="16">
+                <ImageView fx:id="underlineIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Text_underline.png" />
                     </image>

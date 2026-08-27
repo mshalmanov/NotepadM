@@ -39,7 +39,7 @@ public class MainFormController
     private MenuItem copyMenuItem;
     
     @FXML
-    private MenuItem pastMenuItem;
+    private MenuItem pasteMenuItem;
     
     // --- get TextArea for the current tab (if tab exists)
     private TextArea getCurrentTextArea()
