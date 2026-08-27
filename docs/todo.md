@@ -31,7 +31,7 @@
 | Иконка приложения / заголовок окна | ✅ | `MainForm.java`, `NotepadM.png` |
 | Сборка в fat-jar (`maven-shade-plugin`) | ✅ | `ru.filive.Launcher` как main-class шейдед-jar-а |
 | Сборка в `.exe` (`launch4j-maven-plugin`) | ✅ | `target/NotepadM.exe`, требует JRE ≥ 21 на машине пользователя |
-| CI (GitHub Actions) | ✅ | Сборка на push в `dev`/`master` и PR в `master`, публикует jar и exe как артефакты |
+| CI (GitHub Actions) | ✅ | Сборка на push в `dev`/`master` и PR в `master`, публикует jar и exe как артефакты. Кэш Maven-зависимостей, `concurrency` (отмена устаревших прогонов), `timeout-minutes: 20`, batch-режим `mvn -B`, путь к jar-артефакту — glob `NotepadM-*.jar` вместо захардкоженной версии |
 | VS Code запуск/отладка | ✅ | `.vscode/launch.json`, `extensions.json`, `settings.json` |
 | Юнит-тесты | ❌ | Тестов нет вообще (`mvn test` → "No tests to run") |
 
@@ -70,6 +70,7 @@
 22. Убрать закоммиченный `NotepadM.iml` из git (`git rm --cached NotepadM.iml`) — файл уже в `.gitignore`, но был закоммичен раньше, чем добавили правило.
 23. Подсветка синтаксиса сейчас жёстко привязана к Java (`JavaSyntaxHighlighter`) — при добавлении Open с определением языка по расширению файла потребуется абстракция "highlighter по языку" (сейчас сознательно не создавалась — не на чём было базировать выбор языка).
 24. Подписки на изменения текста (`codeArea.multiPlainChanges()...subscribe(...)` для подсветки и `codeArea.plainTextChanges().subscribe(...)` для dirty-флага) не отписываются при закрытии вкладки. Раньше это было чисто теоретической проблемой — закрытия вкладок вообще не было; теперь вкладки закрываются штатно (`Tab.setOnCloseRequest` + `confirmClose()`, см. `docs/steps.md`, запись №11), так что это реальная, хоть и небольшая утечка подписок при активной работе с множеством вкладок за сессию. Исправление — `Subscription` от `.subscribe(...)` нужно сохранить и вызвать `.unsubscribe()` в обработчике закрытия вкладки.
+25. `.github/workflows/main.yml` не задаёт `permissions:` — джоба использует дефолтные (более широкие, чем нужны для простой сборки) права `GITHUB_TOKEN`. Рассмотрено при ревью CI (`docs/steps.md`, запись №13), но осознанно не применено по решению пользователя вместе с остальными правками этого ревью — стоит вернуться, если появится необходимость в более строгом security-review workflow'а.
 
 ## Известные ограничения окружения сборки
 - Локальная сборка требует **JDK 21** и **Apache Maven** (в этой машине Maven установлен вручную в `%LOCALAPPDATA%\maven`, не через инсталлятор — не забудьте прописать `PATH`/`JAVA_HOME`, если открываете новый терминал).

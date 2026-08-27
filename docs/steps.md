@@ -326,3 +326,43 @@ RichTextFX не регистрирует изменение как отменя�
 закрыты, таблица функционала — New/Undo-Redo/индикатор изменений).
 
 **Дата:** 2026-08-28
+
+---
+
+### 13. Ревью и улучшения `.github/workflows/main.yml`
+
+**Описание:** По запросу проведён обзор CI-конфигурации. Найдена одна
+реальная хрупкость и несколько типовых улучшений; пользователь через
+`AskUserQuestion` выбрал, какие применить.
+
+Найдено и обсуждено (см. таблицу ниже — что применено, что отложено):
+
+| Находка | Применено? |
+|---|---|
+| Путь к JAR-артефакту жёстко ссылался на `target/NotepadM-1.0-SNAPSHOT.jar` — версия задана в двух местах (`pom.xml` и workflow), при бампе версии в `pom.xml` шаг `Upload JAR artifact` тихо перестал бы находить файл | ✅ |
+| Отсутствие кэша Maven-зависимостей — каждый прогон заново качает JavaFX/RichTextFX/бинарники launch4j | ✅ |
+| Отсутствие `timeout-minutes`, `concurrency`, batch-режима `mvn -B` | ✅ |
+| Отсутствие явного `permissions:` (ограничение прав `GITHUB_TOKEN`) | ❌ отложено по решению пользователя, зафиксировано как `docs/todo.md`, п.25 |
+
+**Изменения в `.github/workflows/main.yml`:**
+- `concurrency: { group: "${{ github.workflow }}-${{ github.ref }}",
+  cancel-in-progress: true }` на уровне workflow — новый пуш отменяет ещё
+  идущий устаревший прогон для той же ветки.
+- `jobs.build.timeout-minutes: 20`.
+- `actions/setup-java@v4` → добавлен `cache: 'maven'`.
+- `mvn clean install` → `mvn -B clean install` (batch-режим, чище логи в CI).
+- Путь `Upload JAR artifact` → `target/NotepadM-*.jar` (glob) вместо
+  `target/NotepadM-1.0-SNAPSHOT.jar`; не пересекается с
+  `target/original-NotepadM-1.0-SNAPSHOT.jar` (тонкий jar от
+  `maven-shade-plugin` называется с префиксом `original-`, а не `NotepadM-`)
+  — проверено локально (`ls target/*.jar`) перед фиксацией.
+
+Локально проверено: `mvn -B clean install` собирается без ошибок,
+`target/NotepadM-*.jar` действительно резолвится ровно в один файл —
+шейдед jar, `original-*` не задет.
+
+Документация обновлена: `docs/todo.md` (строка CI в таблице функционала —
+перечислены новые CI-настройки; новый пункт 25 техдолга — `permissions:`
+рассмотрен, но осознанно не применён).
+
+**Дата:** 2026-08-28
