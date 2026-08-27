@@ -46,6 +46,12 @@ public class MainFormController
     private MenuItem exitMenuItem;
 
     @FXML
+    private MenuItem undoMenuItem;
+
+    @FXML
+    private MenuItem redoMenuItem;
+
+    @FXML
     private MenuItem cutMenuItem;
 
     @FXML
@@ -60,11 +66,13 @@ public class MainFormController
         final CodeArea codeArea;
         File file;
         boolean dirty;
+        String baseTitle; // имя файла или "New File N", без индикатора "*"
 
-        TabContent(CodeArea codeArea, File file)
+        TabContent(CodeArea codeArea, File file, String baseTitle)
         {
             this.codeArea = codeArea;
             this.file = file;
+            this.baseTitle = baseTitle;
         }
     }
 
@@ -105,6 +113,12 @@ public class MainFormController
                 new FileChooser.ExtensionFilter("All Files (*.*)", "*.*"));
     }
 
+    // --- обновляет текст вкладки: "*" перед именем, если есть несохранённые изменения
+    private void updateTabTitle(Tab tab, TabContent tabContent)
+    {
+        tab.setText((tabContent.dirty ? "*" : "") + tabContent.baseTitle);
+    }
+
     private void showError(String title, String message)
     {
         Alert alert = new Alert(Alert.AlertType.ERROR);
@@ -134,7 +148,7 @@ public class MainFormController
         }
 
         tabPane.getSelectionModel().select(tab);
-        ButtonType result = askSaveChanges(tab.getText());
+        ButtonType result = askSaveChanges(tabContent.baseTitle);
         if (result == DONT_SAVE_BUTTON)
         {
             return true;
@@ -165,8 +179,9 @@ public class MainFormController
         {
             Files.writeString(file.toPath(), tabContent.codeArea.getText());
             tabContent.file = file;
+            tabContent.baseTitle = file.getName();
             tabContent.dirty = false;
-            tab.setText(file.getName());
+            updateTabTitle(tab, tabContent);
             return true;
         }
         catch (IOException e)
@@ -176,7 +191,7 @@ public class MainFormController
         }
     }
 
-    private Tab createTab(String title, String content, File file)
+    private Tab createTab(String baseTitle, String content, File file)
     {
         CodeArea codeArea = new CodeArea();
         codeArea.setParagraphGraphicFactory(LineNumberFactory.get(codeArea));
@@ -185,8 +200,8 @@ public class MainFormController
             codeArea.replaceText(content);
         }
 
-        TabContent tabContent = new TabContent(codeArea, file);
-        Tab tab = new Tab(title);
+        TabContent tabContent = new TabContent(codeArea, file, baseTitle);
+        Tab tab = new Tab(baseTitle);
         tab.setContent(new VirtualizedScrollPane<>(codeArea));
         tab.setUserData(tabContent);
         tab.setOnCloseRequest(closeEvent -> {
@@ -201,7 +216,10 @@ public class MainFormController
                 .subscribe(ignore -> codeArea.setStyleSpans(
                         0, JavaSyntaxHighlighter.computeHighlighting(codeArea.getText())));
         // регистрируется после начального replaceText(), чтобы загрузка контента не считалась правкой
-        codeArea.plainTextChanges().subscribe(change -> tabContent.dirty = true);
+        codeArea.plainTextChanges().subscribe(change -> {
+            tabContent.dirty = true;
+            updateTabTitle(tab, tabContent);
+        });
 
         tabPane.getTabs().add(tab);
         tabPane.getSelectionModel().select(tab);
@@ -209,10 +227,13 @@ public class MainFormController
         return tab;
     }
 
-    // --- создаёт пустую вкладку по умолчанию (используется при старте приложения, если не открыт ни один файл)
+    private int newFileCounter = 0;
+
+    // --- создаёт пустую вкладку с уникальным именем (используется при старте приложения и по действию New)
     public void newTab()
     {
-        createTab("New File", null, null);
+        newFileCounter++;
+        createTab("New File " + newFileCounter, null, null);
     }
 
     // --- true = можно закрывать приложение (нет несохранённых изменений либо пользователь их разрешил сохранить/отбросить)
@@ -273,6 +294,26 @@ public class MainFormController
         if (canClose())
         {
             Platform.exit();
+        }
+    }
+
+    @FXML
+    private void onUndoAction(ActionEvent event)
+    {
+        CodeArea currentCodeArea = getCurrentCodeArea();
+        if (currentCodeArea != null)
+        {
+            currentCodeArea.undo();
+        }
+    }
+
+    @FXML
+    private void onRedoAction(ActionEvent event)
+    {
+        CodeArea currentCodeArea = getCurrentCodeArea();
+        if (currentCodeArea != null)
+        {
+            currentCodeArea.redo();
         }
     }
 

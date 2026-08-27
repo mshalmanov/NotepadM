@@ -48,6 +48,17 @@
         </Menu>
 
         <Menu text="Edit">
+            <MenuItem fx:id="undoMenuItem" text="Undo" onAction="#onUndoAction">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Undo.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>
+            <MenuItem fx:id="redoMenuItem" text="Redo" onAction="#onRedoAction" />
+            <SeparatorMenuItem />
             <MenuItem fx:id="cutMenuItem" text="Cut" onAction="#onCutAction">
                 <graphic>
                     <ImageView fitHeight="16" fitWidth="16">
@@ -106,6 +117,15 @@
                 <ImageView fx:id="saveIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Save.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="undoButton" onAction="#onUndoAction">
+            <graphic>
+                <ImageView fx:id="undoIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Undo.png" />
                     </image>
                 </ImageView>
             </graphic>
