@@ -85,7 +85,17 @@
                         </image>
                     </ImageView>
                 </graphic>
-            </MenuItem> 
+            </MenuItem>
+            <SeparatorMenuItem />
+            <MenuItem fx:id="findMenuItem" text="Find/Replace..." onAction="#onFindAction" accelerator="Ctrl+F">
+                <graphic>
+                    <ImageView fitHeight="16" fitWidth="16">
+                        <image>
+                            <Image url="images/Find.png" />
+                        </image>
+                    </ImageView>
+                </graphic>
+            </MenuItem>
         </Menu>
 
         <Menu text="Help">
@@ -153,6 +163,15 @@
                 <ImageView fx:id="pasteIcon" fitHeight="16" fitWidth="16">
                     <image>
                         <Image url="images/Paste.png" />
+                    </image>
+                </ImageView>
+            </graphic>
+        </Button>
+        <Button fx:id="findButton" onAction="#onFindAction">
+            <graphic>
+                <ImageView fx:id="findIcon" fitHeight="16" fitWidth="16">
+                    <image>
+                        <Image url="images/Find.png" />
                     </image>
                 </ImageView>
             </graphic>

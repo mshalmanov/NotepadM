@@ -13,15 +13,25 @@ import java.time.Duration;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.geometry.Insets;
+import javafx.scene.Scene;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Label;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TextField;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.stage.FileChooser;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 import javafx.stage.Window;
 
 import org.fxmisc.flowless.VirtualizedScrollPane;
@@ -59,6 +69,16 @@ public class MainFormController
 
     @FXML
     private MenuItem pasteMenuItem;
+
+    @FXML
+    private MenuItem findMenuItem;
+
+    // --- Find/Replace: немодальное окно, создаётся лениво при первом Ctrl+F и переиспользуется дальше
+    private Stage findReplaceStage;
+    private TextField findField;
+    private TextField replaceField;
+    private CheckBox matchCaseCheckBox;
+    private Label findStatusLabel;
 
     // --- содержимое вкладки: CodeArea + файл, с которым она связана (null, пока не сохранена/открыта)
     private static class TabContent
@@ -357,6 +377,170 @@ public class MainFormController
         {
             currentCodeArea.paste();
         }
+    }
+
+    // --- строит немодальное окно Find/Replace (один раз, дальше переиспользуется)
+    private void buildFindReplaceStage()
+    {
+        findField = new TextField();
+        replaceField = new TextField();
+        matchCaseCheckBox = new CheckBox("Match case");
+        findStatusLabel = new Label();
+
+        Button findNextButton = new Button("Find Next");
+        findNextButton.setOnAction(e -> findNext());
+        Button replaceButton = new Button("Replace");
+        replaceButton.setOnAction(e -> replaceCurrent());
+        Button replaceAllButton = new Button("Replace All");
+        replaceAllButton.setOnAction(e -> replaceAll());
+        Button closeButton = new Button("Close");
+        closeButton.setOnAction(e -> findReplaceStage.hide());
+
+        GridPane grid = new GridPane();
+        grid.setHgap(8);
+        grid.setVgap(8);
+        grid.setPadding(new Insets(10));
+        grid.addRow(0, new Label("Find:"), findField);
+        grid.addRow(1, new Label("Replace with:"), replaceField);
+        grid.add(matchCaseCheckBox, 1, 2);
+        grid.add(new HBox(6, findNextButton, replaceButton, replaceAllButton, closeButton), 1, 3);
+        grid.add(findStatusLabel, 1, 4);
+        GridPane.setHgrow(findField, javafx.scene.layout.Priority.ALWAYS);
+        GridPane.setHgrow(replaceField, javafx.scene.layout.Priority.ALWAYS);
+
+        findReplaceStage = new Stage();
+        findReplaceStage.setTitle("Find and Replace");
+        findReplaceStage.initOwner(getWindow());
+        findReplaceStage.initModality(Modality.NONE);
+        findReplaceStage.setScene(new Scene(grid));
+        findReplaceStage.setResizable(false);
+    }
+
+    @FXML
+    private void onFindAction(ActionEvent event)
+    {
+        if (findReplaceStage == null)
+        {
+            buildFindReplaceStage();
+        }
+
+        CodeArea currentCodeArea = getCurrentCodeArea();
+        if (currentCodeArea != null && !currentCodeArea.getSelectedText().isEmpty())
+        {
+            findField.setText(currentCodeArea.getSelectedText());
+        }
+        findStatusLabel.setText("");
+
+        findReplaceStage.show();
+        findReplaceStage.toFront();
+        findField.requestFocus();
+        findField.selectAll();
+    }
+
+    // --- ищет findField.getText() в текущей CodeArea, начиная с конца текущего выделения, с переходом в начало (wrap-around)
+    private void findNext()
+    {
+        CodeArea currentCodeArea = getCurrentCodeArea();
+        String searchText = findField.getText();
+        if (currentCodeArea == null || searchText.isEmpty())
+        {
+            return;
+        }
+
+        String text = currentCodeArea.getText();
+        String haystack = matchCaseCheckBox.isSelected() ? text : text.toLowerCase();
+        String needle = matchCaseCheckBox.isSelected() ? searchText : searchText.toLowerCase();
+
+        int from = currentCodeArea.getSelection().getEnd();
+        int index = haystack.indexOf(needle, from);
+        if (index == -1)
+        {
+            index = haystack.indexOf(needle); // wrap-around: поиск с начала
+        }
+
+        if (index == -1)
+        {
+            findStatusLabel.setText("Phrase not found.");
+            return;
+        }
+
+        currentCodeArea.selectRange(index, index + needle.length());
+        currentCodeArea.requestFollowCaret();
+        findStatusLabel.setText("");
+    }
+
+    // --- заменяет текущее выделение (если оно совпадает с findField.getText()) и переходит к следующему совпадению
+    private void replaceCurrent()
+    {
+        CodeArea currentCodeArea = getCurrentCodeArea();
+        String searchText = findField.getText();
+        if (currentCodeArea == null || searchText.isEmpty())
+        {
+            return;
+        }
+
+        String selected = currentCodeArea.getSelectedText();
+        boolean matchesSelection = matchCaseCheckBox.isSelected()
+                ? selected.equals(searchText)
+                : selected.equalsIgnoreCase(searchText);
+
+        if (matchesSelection)
+        {
+            var selection = currentCodeArea.getSelection();
+            currentCodeArea.replaceText(selection.getStart(), selection.getEnd(), replaceField.getText());
+        }
+
+        findNext();
+    }
+
+    // --- заменяет все вхождения одним действием (одна запись в undo-стеке)
+    private void replaceAll()
+    {
+        CodeArea currentCodeArea = getCurrentCodeArea();
+        String searchText = findField.getText();
+        if (currentCodeArea == null || searchText.isEmpty())
+        {
+            return;
+        }
+
+        String text = currentCodeArea.getText();
+        String replacement = replaceField.getText();
+        StringBuilder result = new StringBuilder();
+        int count = 0;
+        int pos = 0;
+
+        if (matchCaseCheckBox.isSelected())
+        {
+            int index;
+            while ((index = text.indexOf(searchText, pos)) != -1)
+            {
+                result.append(text, pos, index).append(replacement);
+                pos = index + searchText.length();
+                count++;
+            }
+        }
+        else
+        {
+            String haystack = text.toLowerCase();
+            String needle = searchText.toLowerCase();
+            int index;
+            while ((index = haystack.indexOf(needle, pos)) != -1)
+            {
+                result.append(text, pos, index).append(replacement);
+                pos = index + needle.length();
+                count++;
+            }
+        }
+        result.append(text.substring(pos));
+
+        if (count == 0)
+        {
+            findStatusLabel.setText("Phrase not found.");
+            return;
+        }
+
+        currentCodeArea.replaceText(0, currentCodeArea.getLength(), result.toString());
+        findStatusLabel.setText("Replaced " + count + " occurrence(s).");
     }
 
     @FXML
