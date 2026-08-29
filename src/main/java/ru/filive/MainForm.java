@@ -26,7 +26,7 @@ public class MainForm extends Application
         AnchorPane root = loader.load();
         MainFormController controller = loader.getController();
         Scene scene = new Scene(root, 800, 600);
-        scene.getStylesheets().add(getClass().getResource("/css/java-keywords.css").toExternalForm());
+        scene.getStylesheets().add(getClass().getResource("/css/syntax-highlighting.css").toExternalForm());
 
         primaryStage.setTitle("Notepad");
         primaryStage.getIcons().add(

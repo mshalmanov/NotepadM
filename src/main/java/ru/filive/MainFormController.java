@@ -87,12 +87,14 @@ public class MainFormController
         File file;
         boolean dirty;
         String baseTitle; // имя файла или "New File N", без индикатора "*"
+        SyntaxHighlighter highlighter; // подбирается по расширению файла
 
         TabContent(CodeArea codeArea, File file, String baseTitle)
         {
             this.codeArea = codeArea;
             this.file = file;
             this.baseTitle = baseTitle;
+            this.highlighter = SyntaxHighlighters.forFileName(file != null ? file.getName() : baseTitle);
         }
     }
 
@@ -130,6 +132,17 @@ public class MainFormController
         fileChooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Text Files (*.txt)", "*.txt"),
                 new FileChooser.ExtensionFilter("Java Files (*.java)", "*.java"),
+                new FileChooser.ExtensionFilter("C/C++ Files (*.c, *.h, *.cpp, *.hpp)",
+                        "*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hh"),
+                new FileChooser.ExtensionFilter("C# Files (*.cs)", "*.cs"),
+                new FileChooser.ExtensionFilter("Web Files (*.js, *.ts, *.html, *.css)",
+                        "*.js", "*.jsx", "*.ts", "*.tsx", "*.html", "*.htm", "*.css"),
+                new FileChooser.ExtensionFilter("Python Files (*.py)", "*.py", "*.pyw"),
+                new FileChooser.ExtensionFilter("JSON Files (*.json)", "*.json"),
+                new FileChooser.ExtensionFilter("XML Files (*.xml)", "*.xml"),
+                new FileChooser.ExtensionFilter("Markdown Files (*.md)", "*.md", "*.markdown"),
+                new FileChooser.ExtensionFilter("Shell/Script Files (*.sh, *.bat, *.ps1)",
+                        "*.sh", "*.bash", "*.zsh", "*.bat", "*.cmd", "*.ps1"),
                 new FileChooser.ExtensionFilter("All Files (*.*)", "*.*"));
     }
 
@@ -183,6 +196,7 @@ public class MainFormController
     private boolean saveTab(Tab tab, TabContent tabContent)
     {
         File file = tabContent.file;
+        boolean isNewFile = file == null;
         if (file == null)
         {
             FileChooser fileChooser = new FileChooser();
@@ -202,6 +216,13 @@ public class MainFormController
             tabContent.baseTitle = file.getName();
             tabContent.dirty = false;
             updateTabTitle(tab, tabContent);
+            if (isNewFile)
+            {
+                // расширение файла стало известно только сейчас — подбираем подсветку и применяем сразу
+                tabContent.highlighter = SyntaxHighlighters.forFileName(file.getName());
+                tabContent.codeArea.setStyleSpans(0,
+                        tabContent.highlighter.computeHighlighting(tabContent.codeArea.getText()));
+            }
             return true;
         }
         catch (IOException e)
@@ -221,6 +242,9 @@ public class MainFormController
         }
 
         TabContent tabContent = new TabContent(codeArea, file, baseTitle);
+        // подсвечиваем содержимое сразу при создании/открытии вкладки, не дожидаясь первой правки
+        codeArea.setStyleSpans(0, tabContent.highlighter.computeHighlighting(codeArea.getText()));
+
         Tab tab = new Tab(baseTitle);
         tab.setContent(new VirtualizedScrollPane<>(codeArea));
         tab.setUserData(tabContent);
@@ -234,7 +258,7 @@ public class MainFormController
         codeArea.multiPlainChanges()
                 .successionEnds(Duration.ofMillis(500))
                 .subscribe(ignore -> codeArea.setStyleSpans(
-                        0, JavaSyntaxHighlighter.computeHighlighting(codeArea.getText())));
+                        0, tabContent.highlighter.computeHighlighting(codeArea.getText())));
         // регистрируется после начального replaceText(), чтобы загрузка контента не считалась правкой
         codeArea.plainTextChanges().subscribe(change -> {
             tabContent.dirty = true;
@@ -281,6 +305,9 @@ public class MainFormController
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Open File");
         addTextFileExtensionFilters(fileChooser);
+        // при открытии по умолчанию показываем все файлы, а не только .txt
+        fileChooser.setSelectedExtensionFilter(fileChooser.getExtensionFilters().get(
+                fileChooser.getExtensionFilters().size() - 1));
         File file = fileChooser.showOpenDialog(getWindow());
         if (file == null)
         {

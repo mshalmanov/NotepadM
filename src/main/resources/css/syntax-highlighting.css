@@ -1,0 +1,90 @@
+.styled-text-area, .code-area {
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-font-size: 13pt;
+}
+
+/* Общие классы (Java, C-подобные, скриптовые языки, JSON, YAML и т.д.) */
+.keyword {
+    -fx-fill: #0000c0;
+    -fx-font-weight: bold;
+}
+
+.string {
+    -fx-fill: #008000;
+}
+
+.number {
+    -fx-fill: #b5721b;
+}
+
+.comment {
+    -fx-fill: #808080;
+    -fx-font-style: italic;
+}
+
+.punctuation {
+    -fx-fill: #444444;
+    -fx-font-weight: bold;
+}
+
+/* HTML / XML */
+.tagmark {
+    -fx-fill: #444444;
+    -fx-font-weight: bold;
+}
+
+.anytag {
+    -fx-fill: #0000c0;
+    -fx-font-weight: bold;
+}
+
+.attribute {
+    -fx-fill: #a6650a;
+}
+
+.avalue {
+    -fx-fill: #008000;
+}
+
+/* CSS */
+.at-rule {
+    -fx-fill: #8000a0;
+    -fx-font-weight: bold;
+}
+
+.property {
+    -fx-fill: #a6650a;
+}
+
+.hex-color {
+    -fx-fill: #b5721b;
+}
+
+/* Markdown */
+.md-header {
+    -fx-fill: #0000c0;
+    -fx-font-weight: bold;
+}
+
+.md-bold {
+    -fx-font-weight: bold;
+}
+
+.md-italic {
+    -fx-font-style: italic;
+}
+
+.md-code {
+    -fx-fill: #a6650a;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+}
+
+.md-link {
+    -fx-fill: #008000;
+    -fx-underline: true;
+}
+
+.md-blockquote {
+    -fx-fill: #808080;
+    -fx-font-style: italic;
+}
