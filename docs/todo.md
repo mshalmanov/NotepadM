@@ -14,15 +14,15 @@
 | Функция | Статус | Комментарий |
 |---|---|---|
 | Многовкладочный интерфейс (`TabPane`) | ✅ | Создание новой вкладки с `CodeArea` внутри; при старте приложения автоматически создаётся одна пустая вкладка (`MainForm.start()` → `controller.newTab()`) |
-| Подсветка синтаксиса Java | ✅ | `CodeArea` (RichTextFX) + `JavaSyntaxHighlighter`, номера строк через `LineNumberFactory`. Только Java — многоязычная поддержка не реализована (см. пункт ниже) |
+| Подсветка синтаксиса (многоязычная) | ✅ | `CodeArea` (RichTextFX) + `SyntaxHighlighters` — реестр подсветки по расширению файла (~40 расширений: Java, C/C++, C#, JS/TS(X), Python, Go, Rust, Kotlin, Swift, PHP, Ruby, SQL, JSON, YAML, Shell/Bash/PowerShell, Perl, Lua, R, INI, Batch, HTML/XML, CSS, Markdown); неизвестное расширение и `.txt`/`.log` — без подсветки (`PLAIN`). Номера строк через `LineNumberFactory`. См. `docs/architecture.md`, раздел 7.1 |
 | Меню File / Edit / Help + тулбар с иконками | ✅ | Разметка в `MainForm.fxml` |
 | Диалог "About" | ✅ | Статичный текст с автором и версией |
 | New (создание вкладки) | ✅ | Уникальные имена (`New File 1`, `New File 2`, …) через счётчик `MainFormController.newFileCounter` |
 | Copy | ⚠️ | Реализовано вручную через `Clipboard`/`ClipboardContent` вместо встроенного `CodeArea.copy()` |
 | Undo / Redo | ✅ | `CodeArea.undo()`/`redo()`; Undo подключён и в меню Edit, и в тулбаре (иконка `Undo.png`), Redo — только в меню (иконки `Redo.png` в ресурсах нет) |
 | Индикатор несохранённых изменений | ✅ | `*` перед именем вкладки при правке текста (`TabContent.dirty` → `updateTabTitle(...)`), пропадает после успешного Save |
-| Open | ✅ | `FileChooser` (с фильтрами `*.txt`/`*.java`/`*.*`) → `Files.readString(...)` → новая вкладка с содержимым и подсветкой; ошибка чтения — `Alert(ERROR)` |
-| Save / Save As | ✅ | Для новой вкладки (без файла) `Save` открывает `FileChooser.showSaveDialog` (это и есть Save As) с теми же фильтрами расширений; для уже открытого файла — сохраняет по тому же пути без диалога, заголовок вкладки обновляется на имя файла |
+| Open | ✅ | `FileChooser` с фильтрами по группам языков (Text/Java/C·C++/C#/Web/Python/JSON/XML/Markdown/Shell·Batch·PowerShell/All Files) → `Files.readString(...)` → новая вкладка с содержимым и подсветкой, подобранной по расширению; диалог по умолчанию открывается с выбранным фильтром "All Files (\*.\*)" (`fileChooser.setSelectedExtensionFilter(...)`), а не "Text Files"; ошибка чтения — `Alert(ERROR)` |
+| Save / Save As | ✅ | Для новой вкладки (без файла) `Save` открывает `FileChooser.showSaveDialog` (это и есть Save As) с теми же фильтрами расширений, по умолчанию выбран "Text Files (\*.txt)" — чтобы новому файлу без явно введённого расширения подставлялся `.txt`; для уже открытого файла — сохраняет по тому же пути без диалога, заголовок вкладки и подсветка обновляются на основе имени файла |
 | Exit | ✅ | `Platform.exit()`; перед выходом проверяет **все** вкладки на несохранённые изменения (см. следующую строку) |
 | Cut | ✅ | `CodeArea.cut()` |
 | Paste | ✅ | `CodeArea.paste()` |
@@ -69,7 +69,7 @@
 20. Заменить `System.out.println`-логирование на нормальный логгер (`java.util.logging` или `slf4j`), если проект будет расти.
 21. Добавить unit-тесты хотя бы для `MainFormController` (после реализации Open/Save — тестировать чтение/запись файлов, работу с вкладками).
 22. Убрать закоммиченный `NotepadM.iml` из git (`git rm --cached NotepadM.iml`) — файл уже в `.gitignore`, но был закоммичен раньше, чем добавили правило.
-23. Подсветка синтаксиса сейчас жёстко привязана к Java (`JavaSyntaxHighlighter`) — при добавлении Open с определением языка по расширению файла потребуется абстракция "highlighter по языку" (сейчас сознательно не создавалась — не на чём было базировать выбор языка).
+23. ~~Подсветка синтаксиса сейчас жёстко привязана к Java (`JavaSyntaxHighlighter`) — при добавлении Open с определением языка по расширению файла потребуется абстракция "highlighter по языку".~~ ✅ Реализовано — `SyntaxHighlighter`/`SyntaxHighlighters`/`GenericSyntaxHighlighter`+`LanguageSpec`, см. `docs/architecture.md`, раздел 7.1 и `docs/steps.md`, запись №16.
 24. Подписки на изменения текста (`codeArea.multiPlainChanges()...subscribe(...)` для подсветки и `codeArea.plainTextChanges().subscribe(...)` для dirty-флага) не отписываются при закрытии вкладки. Раньше это было чисто теоретической проблемой — закрытия вкладок вообще не было; теперь вкладки закрываются штатно (`Tab.setOnCloseRequest` + `confirmClose()`, см. `docs/steps.md`, запись №11), так что это реальная, хоть и небольшая утечка подписок при активной работе с множеством вкладок за сессию. Исправление — `Subscription` от `.subscribe(...)` нужно сохранить и вызвать `.unsubscribe()` в обработчике закрытия вкладки.
 25. `.github/workflows/main.yml` не задаёт `permissions:` — джоба использует дефолтные (более широкие, чем нужны для простой сборки) права `GITHUB_TOKEN`. Рассмотрено при ревью CI (`docs/steps.md`, запись №13), но осознанно не применено по решению пользователя вместе с остальными правками этого ревью — стоит вернуться, если появится необходимость в более строгом security-review workflow'а.
 

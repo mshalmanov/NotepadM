@@ -54,14 +54,21 @@ NotepadM/
 │   ├── todo.md
 │   └── steps.md
 ├── src/main/java/ru/filive/
-│   ├── Launcher.java              # Точка входа для fat-jar (см. п.5)
-│   ├── MainForm.java              # javafx.application.Application, точка входа для dev-режима
-│   ├── MainFormController.java    # Контроллер FXML, вся UI-логика
-│   └── JavaSyntaxHighlighter.java # Подсветка синтаксиса Java для CodeArea (regex + StyleSpans)
+│   ├── Launcher.java                  # Точка входа для fat-jar (см. п.5)
+│   ├── MainForm.java                  # javafx.application.Application, точка входа для dev-режима
+│   ├── MainFormController.java        # Контроллер FXML, вся UI-логика
+│   ├── SyntaxHighlighter.java         # Функциональный интерфейс подсветки: text → StyleSpans
+│   ├── SyntaxHighlighters.java        # Реестр "расширение файла → SyntaxHighlighter" + PLAIN-заглушка
+│   ├── LanguageSpec.java              # record: ключевые слова + синтаксис комментариев одного языка
+│   ├── GenericSyntaxHighlighter.java  # Универсальный regex-подсветчик по LanguageSpec (C-подобные, скриптовые и т.п.)
+│   ├── MarkupSyntaxHighlighter.java   # Подсветка тегов/атрибутов HTML/XML
+│   ├── CssSyntaxHighlighter.java      # Подсветка CSS (селекторы/свойства/hex-цвета)
+│   ├── MarkdownSyntaxHighlighter.java # Подсветка Markdown (заголовки/bold/italic/код/ссылки)
+│   └── YamlSyntaxHighlighter.java     # Подсветка YAML (ключи/строки/числа/комментарии/дефисы списков)
 ├── src/main/resources/
-│   ├── MainForm.fxml              # Разметка главного окна (меню, тулбар, TabPane)
-│   ├── css/java-keywords.css      # Стили подсветки синтаксиса (регистрируется на Scene)
-│   └── images/                    # Иконки меню/тулбара (PNG) + NotepadM.ICO/PNG
+│   ├── MainForm.fxml                  # Разметка главного окна (меню, тулбар, TabPane)
+│   ├── css/syntax-highlighting.css    # Стили подсветки для всех языков (регистрируется на Scene)
+│   └── images/                        # Иконки меню/тулбара (PNG) + NotepadM.ICO/PNG
 ├── pom.xml                        # Единственный модуль сборки
 ├── COPYING.txt / LICENSE          # GNU GPL v2+
 └── README.md
@@ -190,8 +197,10 @@ Docker-образ и т.п.) — не забывайте: если он не д�
 ```java
 private static class TabContent {
     final CodeArea codeArea;
-    File file;      // null, пока вкладка не привязана к файлу на диске
-    boolean dirty;  // true после первого изменения текста пользователем
+    File file;                    // null, пока вкладка не привязана к файлу на диске
+    boolean dirty;                // true после первого изменения текста пользователем
+    String baseTitle;             // имя файла или "New File N", без индикатора "*"
+    SyntaxHighlighter highlighter; // подбирается по расширению файла, см. раздел 7.1
 }
 ```
 
@@ -224,35 +233,106 @@ private static class TabContent {
 текст целиком и делает один вызов `codeArea.replaceText(0, length, ...)` —
 это одна запись в undo-стеке `CodeArea`, а не N последовательных.
 
-### 7.1 Механизм подсветки синтаксиса (только Java)
+### 7.1 Механизм подсветки синтаксиса (многоязычная)
 
-- `ru.filive.JavaSyntaxHighlighter` — единственный класс, отвечающий за
-  подсветку. Содержит скомпилированный `Pattern` с именованными группами
-  (`KEYWORD`, `PAREN`, `BRACE`, `BRACKET`, `SEMICOLON`, `STRING`, `COMMENT`)
-  и статический метод `computeHighlighting(String text)`, возвращающий
-  `StyleSpans<Collection<String>>` — RichTextFX сопоставляет каждому спану
-  CSS-класс (`.keyword`, `.string`, ...).
+Подсветка выбирается **по расширению файла**, а не жёстко зашита под один
+язык. Ключевая абстракция — функциональный интерфейс:
+
+```java
+public interface SyntaxHighlighter {
+    StyleSpans<Collection<String>> computeHighlighting(String text);
+}
+```
+
+Реализации делятся на две группы, в зависимости от того, насколько похожа
+структура токенов языка на "ключевые слова + строки + числа + комментарии +
+скобки":
+
+- **Табличная (`GenericSyntaxHighlighter` + `LanguageSpec`)** — покрывает
+  большинство языков: Java, C, C++, C#, JavaScript/TypeScript (+JSX/TSX),
+  Python, Go, Rust, Kotlin, Swift, PHP, Ruby, SQL, JSON, Shell/Bash,
+  PowerShell, Perl, Lua, R, INI, Batch. `LanguageSpec` — `record` с набором
+  ключевых слов, однострочными и (опционально) блочными комментариями и
+  флагом `caseInsensitiveKeywords` (нужен для SQL/PowerShell/Batch).
+  `GenericSyntaxHighlighter` на основе `LanguageSpec` в конструкторе один раз
+  собирает единый `Pattern` с именованными группами `COMMENT`, `STRING`,
+  `KEYWORD`, `NUMBER`, `PUNCTUATION` — то есть сам класс не знает о
+  конкретном языке, вся специфика — в переданном `LanguageSpec`. Все
+  ~20 языковых констант и их ключевые слова собраны в
+  `SyntaxHighlighters` (см. ниже) — заводить по отдельному `.java`-файлу на
+  язык здесь не нужно, это была бы лишняя абстракция ради самой абстракции.
+- **Выделенные классы** — для языков, где токены структурно другие и
+  генеричный regex "ключевые слова + скобки" не подходит:
+  - `MarkupSyntaxHighlighter` (HTML/XML) — двухпроходный разбор по образцу
+    официального демо RichTextFX (`XMLEditor`): внешний `Pattern` находит
+    теги/комментарии, внутренний — атрибуты внутри найденного тега. Классы:
+    `.tagmark` (`< > </ />`), `.anytag` (имя тега), `.attribute`, `.avalue`.
+  - `CssSyntaxHighlighter` — комментарии/строки/hex-цвета/`@`-правила/имена
+    свойств (по lookahead перед `:`)/числа с единицами (`px`, `em`, ...).
+    Классы: `.at-rule`, `.property`, `.hex-color` + общие `.comment`/
+    `.string`/`.number`/`.punctuation`.
+  - `MarkdownSyntaxHighlighter` — заголовки (`#`...`######`), `**bold**`,
+    `*italic*`, `` `code` ``/```` ```блоки``` ````, `[ссылки](url)`,
+    `> цитаты`. Классы `.md-*`.
+  - `YamlSyntaxHighlighter` — не переиспользует `GenericSyntaxHighlighter`,
+    хотя формально YAML тоже "ключи + значения + комментарии": в generic-схеме
+    не было понятия "ключ перед `:`", и обычный файл вида `key: value` без
+    строк/чисел/комментариев/булевых оставался практически без цвета — при
+    ручной проверке с реальным `.yml`-файлом это выглядело как "подсветка не
+    работает". Отдельный класс с явной группой `KEY` (lookahead перед `\h*:`,
+    по аналогии с `PROPERTY` в CSS) и `DASH` (маркер элемента списка `- `)
+    решает это — ключи красятся классом `.property`, дефисы — `.punctuation`.
+  - Каждый из этих четырёх — синглтон (`INSTANCE`), без состояния, в отличие
+    от `GenericSyntaxHighlighter`, у которого на каждый языковой `LanguageSpec`
+    создаётся свой экземпляр с собственным скомпилированным `Pattern`.
+- **`SyntaxHighlighters`** — реестр `Map<String, SyntaxHighlighter>` по
+  расширению файла (без точки, в нижнем регистре), плюс константа `PLAIN`
+  (пустые `StyleSpans` на весь текст) — используется для `.txt`/`.log` и
+  любого нераспознанного расширения. Публичный метод
+  `forFileName(String fileName)` вынимает расширение и возвращает
+  подсветчик из карты или `PLAIN`.
+- **Привязка к вкладке.** `TabContent.highlighter` подбирается один раз в
+  конструкторе `TabContent` — по имени файла, если вкладка открыта из файла,
+  иначе по `baseTitle` (для новой вкладки `"New File N"` расширения нет →
+  `PLAIN`). В `createTab(...)` подсветка теперь применяется **сразу**, одним
+  вызовом `codeArea.setStyleSpans(...)` сразу после создания `TabContent`
+  — раньше (до многоязычной поддержки) первая подписка на подсветку
+  регистрировалась уже *после* начальной загрузки текста, из-за чего только
+  что открытый файл оставался без подсветки до первой правки; это было
+  практически незаметно, пока был только Java, но стало заметной проблемой
+  при диагностике подсветки Markdown/YAML — исправлено попутно. Если файл
+  сохраняется впервые (`Save`/`Save As`, `saveTab(...)` при `file == null`),
+  расширение становится известно только в момент сохранения —
+  `tabContent.highlighter` пересчитывается через `forFileName(...)` и
+  подсветка применяется повторно тем же вызовом `setStyleSpans(...)`.
 - В `MainFormController.createTab(...)` при создании `CodeArea` подписка
   `codeArea.multiPlainChanges().successionEnds(Duration.ofMillis(500)).subscribe(...)`
   пересчитывает подсветку через 500 мс после того, как пользователь
   перестал печатать (debounce, чтобы не гонять regex на каждое нажатие
-  клавиши). Подписка **не отписывается** при закрытии вкладки — теперь, когда
-  вкладки штатно закрываются (`Tab.setOnCloseRequest`, см. раздел 7), это
-  реальная (хоть и небольшая) утечка, а не гипотетическая, см. `docs/todo.md`,
-  п.24.
+  клавиши), используя `tabContent.highlighter` (то есть подхватывает смену
+  подсветки после Save As без дополнительной синхронизации). Подписка **не
+  отписывается** при закрытии вкладки — реальная (хоть и небольшая) утечка,
+  см. `docs/todo.md`, п.24.
 - Номера строк — `codeArea.setParagraphGraphicFactory(LineNumberFactory.get(codeArea))`,
   готовая фабрика из RichTextFX.
-- Цвета — `src/main/resources/css/java-keywords.css`, зарегистрирован один
-  раз на уровне `Scene` в `MainForm.java`
-  (`scene.getStylesheets().add(...)`) — CSS каскадно применяется ко всем
-  вкладкам/`CodeArea`, создаваемым позже, регистрировать стиль на каждом
-  `CodeArea` отдельно не нужно.
-- Подсветка жёстко привязана к Java — нет определения языка по расширению
-  файла (Open ещё не реализован) и нет абстракции "highlighter на язык".
-  Если/когда появится многоязычная поддержка, `JavaSyntaxHighlighter` стоит
-  оставить как есть и добавить рядом реализации для других языков за общим
-  интерфейсом — не переусложнять сейчас ради гипотетического будущего (см.
-  `docs/todo.md`, п.23).
+- Цвета — `src/main/resources/css/syntax-highlighting.css` (переименован из
+  `java-keywords.css`), зарегистрирован один раз на уровне `Scene` в
+  `MainForm.java` (`scene.getStylesheets().add(...)`) — CSS каскадно
+  применяется ко всем вкладкам/`CodeArea`, создаваемым позже, регистрировать
+  стиль на каждом `CodeArea` отдельно не нужно. Файл сгруппирован по общим
+  классам (`.keyword`, `.string`, `.number`, `.comment`, `.punctuation`) и
+  классам, специфичным для HTML/XML, CSS и Markdown.
+- **Диагностика "подсветка не отображается" без доступа к GUI.** Среда
+  ассистента не может открыть реальное окно NotepadM и посмотреть на него
+  глазами, но может запустить JavaFX `Application` с офф-скрин `Stage`,
+  применить те же классы `SyntaxHighlighters`/CSS к тестовому `CodeArea` и
+  сделать `scene.snapshot(...)` → `PixelReader` → собранный вручную BMP
+  (без `javafx-swing`, которого нет в локальном `.m2`) → конвертация в PNG
+  через PowerShell (`System.Drawing`) для визуального просмотра. Это
+  вспомогательный одноразовый код вне репозитория (в scratchpad, не
+  коммитится) — тот же приём, что и JavaFX-смоук-тест из
+  `docs/steps.md`, запись №12, но с рендерингом в файл вместо
+  рефлексии по `@FXML`-методам.
 
 ## 8. Сборочный пайплайн (`pom.xml`)
 
