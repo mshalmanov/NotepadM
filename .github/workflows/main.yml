@@ -95,10 +95,23 @@ jobs:
         shell: bash
         run: |
           mkdir -p target/dist
-          ICON_ARGS=()
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ICON_ARGS=(--icon src/main/resources/images/NotepadM.ICO)
-          fi
+          case "${{ matrix.os }}" in
+            windows-latest)
+              ICON_ARGS=(--icon src/main/resources/images/NotepadM.ICO)
+              # jpackage --type exe нужен WiX (candle.exe/light.exe); windows-latest несёт WiX,
+              # но не всегда кладёт его bin в PATH — добавляем сами через переменную WIX,
+              # которую выставляет инсталлятор WiX Toolset
+              if [ -n "$WIX" ]; then
+                export PATH="$WIX/bin:$PATH"
+              fi
+              ;;
+            macos-latest)
+              ICON_ARGS=(--icon src/main/resources/images/NotepadM.icns)
+              ;;
+            ubuntu-latest)
+              ICON_ARGS=(--icon src/main/resources/images/NotepadM-256.png)
+              ;;
+          esac
 
           jpackage \
             --input target \
