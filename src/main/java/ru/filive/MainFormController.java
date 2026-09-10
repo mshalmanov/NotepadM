@@ -73,6 +73,22 @@ public class MainFormController
     @FXML
     private MenuItem findMenuItem;
 
+    // --- строка состояния
+    @FXML
+    private Label statusPositionLabel;
+
+    @FXML
+    private Label statusSelectionLabel;
+
+    @FXML
+    private Label statusLinesCharsLabel;
+
+    @FXML
+    private Label statusLanguageLabel;
+
+    @FXML
+    private Label statusEncodingLabel;
+
     // --- Find/Replace: немодальное окно, создаётся лениво при первом Ctrl+F и переиспользуется дальше
     private Stage findReplaceStage;
     private TextField findField;
@@ -103,6 +119,42 @@ public class MainFormController
     private static final ButtonType SAVE_BUTTON = new ButtonType("Save", ButtonBar.ButtonData.YES);
     private static final ButtonType DONT_SAVE_BUTTON = new ButtonType("Don't Save", ButtonBar.ButtonData.NO);
     private static final ButtonType CANCEL_BUTTON = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+    @FXML
+    private void initialize()
+    {
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> refreshStatusBar());
+    }
+
+    // --- обновляет строку состояния по текущей вкладке: позиция каретки, выделение, объём текста, язык, кодировка
+    private void refreshStatusBar()
+    {
+        TabContent tabContent = getCurrentTabContent();
+        if (tabContent == null)
+        {
+            statusPositionLabel.setText("");
+            statusSelectionLabel.setText("");
+            statusLinesCharsLabel.setText("");
+            statusLanguageLabel.setText("");
+            statusEncodingLabel.setText("");
+            return;
+        }
+
+        CodeArea codeArea = tabContent.codeArea;
+        statusPositionLabel.setText("Ln " + (codeArea.getCurrentParagraph() + 1)
+                + ", Col " + (codeArea.getCaretColumn() + 1));
+
+        int selectionLength = codeArea.getSelection().getLength();
+        statusSelectionLabel.setText(selectionLength > 0 ? "Selected: " + selectionLength : "");
+
+        statusLinesCharsLabel.setText("Lines: " + codeArea.getParagraphs().size()
+                + "  Chars: " + codeArea.getLength());
+
+        statusLanguageLabel.setText(SyntaxHighlighters.nameForFileName(
+                tabContent.file != null ? tabContent.file.getName() : tabContent.baseTitle));
+
+        statusEncodingLabel.setText("UTF-8");
+    }
 
     private TabContent getCurrentTabContent()
     {
@@ -222,6 +274,7 @@ public class MainFormController
                 tabContent.highlighter = SyntaxHighlighters.forFileName(file.getName());
                 tabContent.codeArea.setStyleSpans(0,
                         tabContent.highlighter.computeHighlighting(tabContent.codeArea.getText()));
+                refreshStatusBar();
             }
             return true;
         }
@@ -264,6 +317,10 @@ public class MainFormController
             tabContent.dirty = true;
             updateTabTitle(tab, tabContent);
         });
+        // строка состояния следит за кареткой/выделением только активной вкладки,
+        // но подписка ставится на каждую — фон-вкладки её просто не двигают
+        codeArea.caretPositionProperty().addListener((obs, oldPos, newPos) -> refreshStatusBar());
+        codeArea.selectionProperty().addListener((obs, oldSel, newSel) -> refreshStatusBar());
 
         tabPane.getTabs().add(tab);
         tabPane.getSelectionModel().select(tab);

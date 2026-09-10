@@ -205,6 +205,19 @@
         </Button>
     </ToolBar>
     
-    <TabPane fx:id="tabPane" AnchorPane.topAnchor="60" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0"/>
+    <TabPane fx:id="tabPane" AnchorPane.topAnchor="60" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="24"/>
+
+    <HBox fx:id="statusBar" alignment="CENTER_LEFT" spacing="12" prefHeight="24"
+          style="-fx-padding: 0 8 0 8; -fx-background-color: #ececec; -fx-border-color: #cccccc; -fx-border-width: 1 0 0 0;"
+          AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
+        <Label fx:id="statusPositionLabel" text="Ln 1, Col 1" />
+        <Label fx:id="statusSelectionLabel" />
+        <Region HBox.hgrow="ALWAYS" />
+        <Label fx:id="statusLinesCharsLabel" text="Lines: 1  Chars: 0" />
+        <Separator orientation="VERTICAL" />
+        <Label fx:id="statusLanguageLabel" text="Plain Text" />
+        <Separator orientation="VERTICAL" />
+        <Label fx:id="statusEncodingLabel" text="UTF-8" />
+    </HBox>
 
 </AnchorPane>

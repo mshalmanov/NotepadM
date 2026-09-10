@@ -198,78 +198,94 @@ public final class SyntaxHighlighters
             "pause", "rem", "setlocal", "endlocal", "shift", "cls"
     ), List.of("REM", "::"));
 
-    private static final Map<String, SyntaxHighlighter> HIGHLIGHTERS = buildMap();
+    /** Подсветка + отображаемое имя языка (для строки состояния) на одно расширение файла. */
+    private record Language(SyntaxHighlighter highlighter, String displayName) { }
+
+    private static final Language PLAIN_LANGUAGE = new Language(PLAIN, "Plain Text");
+
+    private static final Map<String, Language> LANGUAGES = buildMap();
 
     private SyntaxHighlighters() { }
 
     public static SyntaxHighlighter forFileName(String fileName)
     {
+        return languageFor(fileName).highlighter();
+    }
+
+    /** Отображаемое имя языка для строки состояния (например, "Java", "Plain Text"). */
+    public static String nameForFileName(String fileName)
+    {
+        return languageFor(fileName).displayName();
+    }
+
+    private static Language languageFor(String fileName)
+    {
         if (fileName == null)
         {
-            return PLAIN;
+            return PLAIN_LANGUAGE;
         }
         int dot = fileName.lastIndexOf('.');
         if (dot < 0 || dot == fileName.length() - 1)
         {
-            return PLAIN;
+            return PLAIN_LANGUAGE;
         }
         String extension = fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
-        return HIGHLIGHTERS.getOrDefault(extension, PLAIN);
+        return LANGUAGES.getOrDefault(extension, PLAIN_LANGUAGE);
     }
 
-    private static Map<String, SyntaxHighlighter> buildMap()
+    private static Map<String, Language> buildMap()
     {
-        Map<String, SyntaxHighlighter> map = new HashMap<>();
-        map.put("java", JAVA);
-        map.put("c", C_CPP);
-        map.put("h", C_CPP);
-        map.put("cpp", C_CPP);
-        map.put("cc", C_CPP);
-        map.put("cxx", C_CPP);
-        map.put("hpp", C_CPP);
-        map.put("hh", C_CPP);
-        map.put("hxx", C_CPP);
-        map.put("cs", CSHARP);
-        map.put("js", JAVASCRIPT);
-        map.put("mjs", JAVASCRIPT);
-        map.put("cjs", JAVASCRIPT);
-        map.put("jsx", JAVASCRIPT);
-        map.put("ts", TYPESCRIPT);
-        map.put("tsx", TYPESCRIPT);
-        map.put("py", PYTHON);
-        map.put("pyw", PYTHON);
-        map.put("go", GO);
-        map.put("rs", RUST);
-        map.put("kt", KOTLIN);
-        map.put("kts", KOTLIN);
-        map.put("swift", SWIFT);
-        map.put("php", PHP);
-        map.put("rb", RUBY);
-        map.put("sql", SQL);
-        map.put("json", JSON);
-        map.put("yml", YamlSyntaxHighlighter.INSTANCE);
-        map.put("yaml", YamlSyntaxHighlighter.INSTANCE);
-        map.put("sh", SHELL);
-        map.put("bash", SHELL);
-        map.put("zsh", SHELL);
-        map.put("ps1", POWERSHELL);
-        map.put("md", MarkdownSyntaxHighlighter.INSTANCE);
-        map.put("markdown", MarkdownSyntaxHighlighter.INSTANCE);
-        map.put("html", MarkupSyntaxHighlighter.INSTANCE);
-        map.put("htm", MarkupSyntaxHighlighter.INSTANCE);
-        map.put("xhtml", MarkupSyntaxHighlighter.INSTANCE);
-        map.put("xml", MarkupSyntaxHighlighter.INSTANCE);
-        map.put("css", CssSyntaxHighlighter.INSTANCE);
-        map.put("pl", PERL);
-        map.put("pm", PERL);
-        map.put("lua", LUA);
-        map.put("r", R_LANG);
-        map.put("ini", INI);
-        map.put("cfg", INI);
-        map.put("properties", INI);
-        map.put("conf", INI);
-        map.put("bat", BATCH);
-        map.put("cmd", BATCH);
+        Map<String, Language> map = new HashMap<>();
+        map.put("java", new Language(JAVA, "Java"));
+        map.put("c", new Language(C_CPP, "C"));
+        map.put("h", new Language(C_CPP, "C"));
+        map.put("cpp", new Language(C_CPP, "C++"));
+        map.put("cc", new Language(C_CPP, "C++"));
+        map.put("cxx", new Language(C_CPP, "C++"));
+        map.put("hpp", new Language(C_CPP, "C++"));
+        map.put("hh", new Language(C_CPP, "C++"));
+        map.put("hxx", new Language(C_CPP, "C++"));
+        map.put("cs", new Language(CSHARP, "C#"));
+        map.put("js", new Language(JAVASCRIPT, "JavaScript"));
+        map.put("mjs", new Language(JAVASCRIPT, "JavaScript"));
+        map.put("cjs", new Language(JAVASCRIPT, "JavaScript"));
+        map.put("jsx", new Language(JAVASCRIPT, "JavaScript"));
+        map.put("ts", new Language(TYPESCRIPT, "TypeScript"));
+        map.put("tsx", new Language(TYPESCRIPT, "TypeScript"));
+        map.put("py", new Language(PYTHON, "Python"));
+        map.put("pyw", new Language(PYTHON, "Python"));
+        map.put("go", new Language(GO, "Go"));
+        map.put("rs", new Language(RUST, "Rust"));
+        map.put("kt", new Language(KOTLIN, "Kotlin"));
+        map.put("kts", new Language(KOTLIN, "Kotlin"));
+        map.put("swift", new Language(SWIFT, "Swift"));
+        map.put("php", new Language(PHP, "PHP"));
+        map.put("rb", new Language(RUBY, "Ruby"));
+        map.put("sql", new Language(SQL, "SQL"));
+        map.put("json", new Language(JSON, "JSON"));
+        map.put("yml", new Language(YamlSyntaxHighlighter.INSTANCE, "YAML"));
+        map.put("yaml", new Language(YamlSyntaxHighlighter.INSTANCE, "YAML"));
+        map.put("sh", new Language(SHELL, "Shell Script"));
+        map.put("bash", new Language(SHELL, "Shell Script"));
+        map.put("zsh", new Language(SHELL, "Shell Script"));
+        map.put("ps1", new Language(POWERSHELL, "PowerShell"));
+        map.put("md", new Language(MarkdownSyntaxHighlighter.INSTANCE, "Markdown"));
+        map.put("markdown", new Language(MarkdownSyntaxHighlighter.INSTANCE, "Markdown"));
+        map.put("html", new Language(MarkupSyntaxHighlighter.INSTANCE, "HTML"));
+        map.put("htm", new Language(MarkupSyntaxHighlighter.INSTANCE, "HTML"));
+        map.put("xhtml", new Language(MarkupSyntaxHighlighter.INSTANCE, "HTML"));
+        map.put("xml", new Language(MarkupSyntaxHighlighter.INSTANCE, "XML"));
+        map.put("css", new Language(CssSyntaxHighlighter.INSTANCE, "CSS"));
+        map.put("pl", new Language(PERL, "Perl"));
+        map.put("pm", new Language(PERL, "Perl"));
+        map.put("lua", new Language(LUA, "Lua"));
+        map.put("r", new Language(R_LANG, "R"));
+        map.put("ini", new Language(INI, "INI"));
+        map.put("cfg", new Language(INI, "INI"));
+        map.put("properties", new Language(INI, "INI"));
+        map.put("conf", new Language(INI, "INI"));
+        map.put("bat", new Language(BATCH, "Batch"));
+        map.put("cmd", new Language(BATCH, "Batch"));
         return map;
     }
 
