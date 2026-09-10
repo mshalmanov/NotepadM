@@ -8,10 +8,11 @@
 ## 1. Обзор
 
 NotepadM — учебный десктопный текстовый редактор на **JavaFX**, собираемый
-**Maven**-ом в три артефакта:
-- обычный `.jar` (`mvn package` без shade — содержит только классы проекта);
-- самодостаточный fat-`.jar` через `maven-shade-plugin`;
-- нативный Windows-`.exe` через `launch4j-maven-plugin` (обёртка над fat-jar).
+**Maven**-ом (обычный `.jar` и самодостаточный fat-`.jar` через
+`maven-shade-plugin`), а в CI дополнительно упаковываемый через `jpackage`
+(входит в JDK, не Maven-плагин) в нативные самодостаточные инсталляторы —
+`.exe` (Windows), `.dmg` (macOS) и app-image (Linux), каждый со встроенным
+JRE, см. раздел 8.
 
 Архитектурный паттерн — классический **JavaFX FXML MVC**: разметка UI
 (`.fxml`) отделена от логики (`Controller`), связка между ними происходит
@@ -28,8 +29,8 @@ NotepadM — учебный десктопный текстовый редакт
 | `maven-compiler-plugin` | 3.13.0 | Компиляция под `source`/`target` 21 |
 | `javafx-maven-plugin` | 0.0.8 | Запуск (`mvn javafx:run`) в dev-режиме |
 | `maven-shade-plugin` | 3.5.2 | Упаковка fat-jar с JavaFX-зависимостями внутри |
-| `launch4j-maven-plugin` | 2.5.2 | Обёртка fat-jar в нативный `.exe` для Windows |
-| GitHub Actions | — | CI: сборка на `windows-latest` |
+| `jpackage` (JDK 21) | — | В CI: упаковка fat-jar в самодостаточный инсталлятор (exe/dmg/app-image) со встроенным JRE, см. раздел 8 |
+| GitHub Actions | — | CI: матрица `windows-latest`/`macos-latest`/`ubuntu-latest` |
 
 Важно: **в проекте нет `module-info.java`** — приложение не является
 JPMS-модулем, все классы работают в *unnamed module* и на *classpath*, а не
@@ -341,39 +342,54 @@ public interface SyntaxHighlighter {
 1. `maven-compiler-plugin` — компиляция `.java` в `.class` (source/target 21).
 2. `maven-shade-plugin` (`phase=package`, `goal=shade`) — собирает
    `target/NotepadM-1.0-SNAPSHOT.jar` (fat-jar) из classes + всех
-   зависимостей (JavaFX controls/fxml + их транзитивные native-jar для
-   Windows), переписывает `Main-Class` на `ru.filive.Launcher`. Оригинальный
+   зависимостей (JavaFX controls/fxml + их транзитивные native-jar под
+   ОС сборки), переписывает `Main-Class` на `ru.filive.Launcher`. Оригинальный
    тонкий jar сохраняется рядом как `original-NotepadM-1.0-SNAPSHOT.jar`.
-3. `launch4j-maven-plugin` (`phase=package`, `goal=launch4j`) — оборачивает
-   fat-jar в `target/NotepadM.exe`, требует JRE ≥ 21 на машине запуска
-   (`jre.minVersion`), ищет Java через `%JAVA_HOME%;%PATH%`.
 
 `javafx-maven-plugin` не участвует в `package`-цепочке — он используется
 отдельно командой `mvn javafx:run` для быстрого запуска в разработке
-(без сборки jar/exe), напрямую вызывая `ru.filive.MainForm`.
+(без сборки jar), напрямую вызывая `ru.filive.MainForm`.
 
-**Важно держать в синхроне три места с версией Java:**
-`pom.xml → maven.compiler.source/target`, `pom.xml → launch4j.jre.minVersion`,
+Нативные инсталляторы (Windows/macOS/Linux) `pom.xml` не собирает — это
+отдельный шаг CI через `jpackage`, см. раздел 9.
+
+**Важно держать в синхроне версию Java в двух местах:**
+`pom.xml → maven.compiler.source/target` и
 `.github/workflows/main.yml → actions/setup-java.java-version`. Рассинхрон
-не сломает сборку сразу, но создаёт риск: exe откажется запускаться на
-машине с JRE ниже заявленной, либо CI будет собирать другим байткодом, чем
+не сломает сборку сразу, но CI будет собирать другим байткодом, чем
 тестирует локально разработчик.
 
 ## 9. CI/CD (`.github/workflows/main.yml`)
 
+Два независимых job'а:
+
+**`build`** (раннер `windows-latest`):
 - Триггеры: `push` в `master`/`dev`, `pull_request` в `master`,
   ручной `workflow_dispatch`.
-- Раннер: `windows-latest` (обязательно — `launch4j` собирает `.exe`,
-  специфичный для Windows; на Linux-раннере сборка `.exe`-части не будет
-  иметь смысла для тестирования запуска, хотя технически может
-  кросс-компилироваться).
 - Шаги: checkout → `setup-java` (Temurin JDK 21) → `mvn clean install` →
-  публикация `target/NotepadM-1.0-SNAPSHOT.jar` и `target/NotepadM.exe` как
-  build-артефактов (`actions/upload-artifact@v4`).
+  публикация `target/NotepadM-1.0-SNAPSHOT.jar` как build-артефакта
+  (`actions/upload-artifact@v4`, имя `NotepadM-artifact`).
 - CI **не запускает тесты отдельно** — тестов в проекте пока нет
   (`mvn clean install` включает фазу `test`, но там нечего гонять).
   Как только появятся тесты (`docs/todo.md`, п.21), они будут подхвачены
   автоматически без изменений в workflow.
+
+**`package-installers`** (матрица `windows-latest`/`macos-latest`/`ubuntu-latest`,
+не зависит от job `build`, гоняется параллельно):
+- На каждой ОС: checkout → `setup-java` (JDK 21) → `mvn clean install` →
+  собранный jar копируется в отдельный staging-каталог `target/jpackage-input`
+  (специально отдельно от `target/dist`, куда пишет jpackage: если `--input`
+  и `--dest` пересекаются, jpackage рекурсивно копирует сам себя — ловили
+  эту ошибку на практике) → `jpackage --type exe|dmg|app-image` собирает
+  самодостаточный инсталлятор со встроенным JRE → публикуется как отдельный
+  артефакт (`NotepadM-windows-installer`, `NotepadM-macos-installer`,
+  `NotepadM-linux-appimage`).
+- Иконка на каждой ОС своя: `NotepadM.ICO` (Windows), `NotepadM.icns`
+  (macOS), `NotepadM-256.png` (Linux) — все три сгенерированы из исходного
+  `images/NotepadM.png` (32×32) через Pillow/LANCZOS.
+- На Windows `jpackage --type exe` требует WiX Toolset (`candle.exe`/
+  `light.exe`); `windows-latest` его несёт, но не всегда кладёт `bin` в
+  PATH — workflow добавляет `$WIX/bin` в PATH вручную перед вызовом.
 
 ## 10. Локальная среда разработки
 

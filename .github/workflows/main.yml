@@ -43,32 +43,27 @@ jobs:
           name: NotepadM-artifact
           path: target/NotepadM-*.jar
 
-      # Загрузка собранного EXE (Launch4j, фаза package)
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: NotepadM-exe
-          path: target/NotepadM.exe
-
-  # Нативные самодостаточные инсталляторы (JDK 21 вшит внутрь — пользователю
-  # не нужен установленный Java) для каждой ОС через jpackage.
+  # Портативные самодостаточные сборки (JDK 21 вшит внутрь — пользователю
+  # не нужен установленный Java) для каждой ОС через jpackage --type app-image:
+  # папка с готовым к запуску исполняемым файлом, без мастера установки —
+  # распаковал архив и сразу нажал на NotepadM(.exe).
   package-installers:
-    name: Native installer (${{ matrix.os }})
+    name: Native build (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            jpackage-type: exe
-            artifact-name: NotepadM-windows-installer
-            dist-glob: target/dist/*.exe
+            jpackage-type: app-image
+            artifact-name: NotepadM-windows-portable
+            dist-glob: target/dist/NotepadM
           - os: macos-latest
             jpackage-type: dmg
             artifact-name: NotepadM-macos-installer
             dist-glob: target/dist/*.dmg
           - os: ubuntu-latest
             jpackage-type: app-image
-            artifact-name: NotepadM-linux-appimage
+            artifact-name: NotepadM-linux-portable
             dist-glob: target/dist/NotepadM
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -89,21 +84,19 @@ jobs:
         run: mvn -B clean install
 
       # jpackage (входит в JDK 21) упаковывает jar + JRE в нативный формат под текущую ОС:
-      # exe-инсталлятор на Windows (WiX уже есть на windows-latest), .dmg на macOS,
-      # переносимый app-image (папка с исполняемым файлом) на Linux — без внешних зависимостей
+      # переносимый app-image (папка с исполняемым файлом, без мастера установки)
+      # на Windows и Linux, .dmg (стандартный способ распространения на macOS) на macOS
       - name: Build native installer with jpackage
         shell: bash
         run: |
-          mkdir -p target/dist
+          # отдельный staging-каталог только с jar-ом: --input не должен пересекаться
+          # с --dest (target/dist), иначе jpackage рекурсивно копирует сам себя
+          mkdir -p target/jpackage-input target/dist
+          cp target/NotepadM-1.0-SNAPSHOT.jar target/jpackage-input/
+
           case "${{ matrix.os }}" in
             windows-latest)
               ICON_ARGS=(--icon src/main/resources/images/NotepadM.ICO)
-              # jpackage --type exe нужен WiX (candle.exe/light.exe); windows-latest несёт WiX,
-              # но не всегда кладёт его bin в PATH — добавляем сами через переменную WIX,
-              # которую выставляет инсталлятор WiX Toolset
-              if [ -n "$WIX" ]; then
-                export PATH="$WIX/bin:$PATH"
-              fi
               ;;
             macos-latest)
               ICON_ARGS=(--icon src/main/resources/images/NotepadM.icns)
@@ -114,7 +107,7 @@ jobs:
           esac
 
           jpackage \
-            --input target \
+            --input target/jpackage-input \
             --name NotepadM \
             --main-jar NotepadM-1.0-SNAPSHOT.jar \
             --main-class ru.filive.Launcher \

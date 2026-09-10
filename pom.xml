@@ -76,31 +76,6 @@
                 </executions>
             </plugin>
 
-            <plugin>
-                <groupId>com.akathist.maven.plugins.launch4j</groupId>
-                <artifactId>launch4j-maven-plugin</artifactId>
-                <version>2.5.2</version>
-                <executions>
-                    <execution>
-                        <id>l4j-gui</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>launch4j</goal>
-                        </goals>
-                        <configuration>
-                            <headerType>gui</headerType>
-                            <outfile>${project.build.directory}/NotepadM.exe</outfile>
-                            <jar>${project.build.directory}/NotepadM-1.0-SNAPSHOT.jar</jar>
-                            <errTitle>NotepadM</errTitle>
-                            <jre>
-                                <path>%JAVA_HOME%;%PATH%</path>
-                                <minVersion>21</minVersion>
-                            </jre>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
         </plugins>
     </build>
 
