@@ -49,3 +49,70 @@ jobs:
         with:
           name: NotepadM-exe
           path: target/NotepadM.exe
+
+  # Нативные самодостаточные инсталляторы (JDK 21 вшит внутрь — пользователю
+  # не нужен установленный Java) для каждой ОС через jpackage.
+  package-installers:
+    name: Native installer (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            jpackage-type: exe
+            artifact-name: NotepadM-windows-installer
+            dist-glob: target/dist/*.exe
+          - os: macos-latest
+            jpackage-type: dmg
+            artifact-name: NotepadM-macos-installer
+            dist-glob: target/dist/*.dmg
+          - os: ubuntu-latest
+            jpackage-type: app-image
+            artifact-name: NotepadM-linux-appimage
+            dist-glob: target/dist/NotepadM
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # Собирает shaded jar (target/NotepadM-1.0-SNAPSHOT.jar) — его же использует jpackage как вход
+      - name: Build with Maven
+        run: mvn -B clean install
+
+      # jpackage (входит в JDK 21) упаковывает jar + JRE в нативный формат под текущую ОС:
+      # exe-инсталлятор на Windows (WiX уже есть на windows-latest), .dmg на macOS,
+      # переносимый app-image (папка с исполняемым файлом) на Linux — без внешних зависимостей
+      - name: Build native installer with jpackage
+        shell: bash
+        run: |
+          mkdir -p target/dist
+          ICON_ARGS=()
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ICON_ARGS=(--icon src/main/resources/images/NotepadM.ICO)
+          fi
+
+          jpackage \
+            --input target \
+            --name NotepadM \
+            --main-jar NotepadM-1.0-SNAPSHOT.jar \
+            --main-class ru.filive.Launcher \
+            --app-version 1.0.0 \
+            --vendor "Marat Shalmanov" \
+            --dest target/dist \
+            --type ${{ matrix.jpackage-type }} \
+            "${ICON_ARGS[@]}"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.dist-glob }}
